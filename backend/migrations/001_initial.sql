@@ -1,0 +1,12 @@
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE TYPE journey_state AS ENUM ('scheduled','active','completed','cancelled','failed');
+CREATE TYPE provider_state AS ENUM ('unknown','available','unavailable','rate_limited','invalid');
+CREATE TYPE delivery_state AS ENUM ('pending','sent','temporary_failure','permanent_failure','invalid_token');
+CREATE TABLE users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE devices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id), platform text NOT NULL CHECK(platform='android'), fcm_token text NOT NULL, invalidated_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(user_id, fcm_token));
+CREATE TABLE journeys (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id), train_number varchar(10) NOT NULL, journey_date date NOT NULL, destination_station_code varchar(16) NOT NULL, state journey_state NOT NULL DEFAULT 'scheduled', provider_state provider_state NOT NULL DEFAULT 'unknown', current_eta timestamptz, schedule_version integer NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX journeys_active_eta_idx ON journeys (current_eta) WHERE state IN ('scheduled','active');
+CREATE INDEX journeys_user_idx ON journeys (user_id, created_at DESC);
+CREATE TABLE alerts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), journey_id uuid NOT NULL REFERENCES journeys(id), offset_minutes smallint NOT NULL CHECK(offset_minutes IN (120,60,30,15,0)), schedule_version integer NOT NULL, scheduled_for timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(journey_id, offset_minutes, schedule_version));
+CREATE INDEX alerts_due_idx ON alerts (scheduled_for);
+CREATE TABLE notification_deliveries (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), alert_id uuid NOT NULL REFERENCES alerts(id), device_id uuid NOT NULL REFERENCES devices(id), state delivery_state NOT NULL DEFAULT 'pending', attempted_at timestamptz, provider_message_id text, error_code text, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(alert_id, device_id));
