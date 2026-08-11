@@ -1,2 +1,4 @@
 # API contract
 `GET /api/trains/:number/live?date=YYYY-MM-DD` validates exactly five digits and an ISO date. It returns a Train Alert-owned `{ trainNumber, journeyDate, status, currentStation, currentStationCode, previousStation, nextStation, delayMinutes, latitude, longitude, stops }` shape. Stop timestamps and unknown values are nullable. Errors use `{error:{code,message}}`; provider credentials and raw errors are never returned. Station search remains unavailable until RailRadar's documented lookup mapping is added.
+
+Journey endpoints require an authenticated context: `POST /api/journeys`, `GET /api/journeys`, `GET /api/journeys/:id`, and `DELETE /api/journeys/:id`. During development only, `X-User-Id` is a UUID header; production must replace this AuthProvider. Create requests accept only train number, date, and destination code; canonical destination details and ETA come from RailRadar.
