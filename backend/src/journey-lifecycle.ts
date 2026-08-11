@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+
 import {
   ALERT_OFFSETS_MINUTES,
   type Journey,
 } from "./domain.js";
+
 import type { TrainLiveStatus } from "./providers/railradar.js";
 
 export class JourneyLifecycleError extends Error {
@@ -17,7 +19,7 @@ export class JourneyLifecycleError extends Error {
 export function resolveDestination(
   live: TrainLiveStatus,
   code: string
-): TrainLiveStatus["stops"][number] {
+) {
   const stop = live.stops.find(
     (x) => x.stationCode === code
   );
@@ -76,6 +78,20 @@ export function newJourney(
   live: TrainLiveStatus,
   destinationCode: string
 ): Journey {
+  if (live.status === "completed") {
+    throw new JourneyLifecycleError(
+      "TRAIN_COMPLETED",
+      "Cannot create a journey for a completed train."
+    );
+  }
+
+  if (live.status === "unknown") {
+    throw new JourneyLifecycleError(
+      "TRAIN_STATUS_UNKNOWN",
+      "Train status is currently unavailable."
+    );
+  }
+
   const destination = resolveDestination(
     live,
     destinationCode
@@ -86,21 +102,22 @@ export function newJourney(
     userId,
     trainNumber: live.trainNumber,
     journeyDate: live.journeyDate,
-    destinationStationCode: destination.stationCode,
-    destinationStationName: destination.stationName,
+    destinationStationCode:
+      destination.stationCode,
     state:
       live.status === "running"
         ? "active"
         : "scheduled",
     providerState: "available",
-    currentEta: destinationEta(destination),
-    currentDelayMinutes: destination.delayMinutes,
-    lastProviderUpdateAt: live.observedAt ?? null,
+    currentEta:
+      destinationEta(destination),
     scheduleVersion: 0,
   };
 }
 
-export function initialAlerts(journey: Journey) {
+export function initialAlerts(
+  journey: Journey
+) {
   if (!journey.currentEta) {
     throw new JourneyLifecycleError(
       "DESTINATION_ETA_UNAVAILABLE",
@@ -108,13 +125,15 @@ export function initialAlerts(journey: Journey) {
     );
   }
 
-  return ALERT_OFFSETS_MINUTES.map((offset) => ({
-    journeyId: journey.id,
-    offset,
-    scheduledFor: new Date(
-      journey.currentEta!.getTime() -
-        offset * 60_000
-    ),
-    state: "pending" as const,
-  }));
+  return ALERT_OFFSETS_MINUTES.map(
+    (offset) => ({
+      journeyId: journey.id,
+      offset,
+      scheduledFor: new Date(
+        journey.currentEta!.getTime() -
+          offset * 60_000
+      ),
+      state: "pending" as const,
+    })
+  );
 }
