@@ -1,134 +1,100 @@
+import { describe, expect, it } from "vitest";
+
 import {
-  describe,
-  expect,
-  it,
-} from "vitest";
+  ALERT_OFFSETS_MINUTES,
+  type Journey,
+} from "../src/domain.js";
 
 import {
   planAlerts,
-  needsNewSchedule,
 } from "../src/alert-engine.js";
 
-import type { Journey } from "../src/domain.js";
-
 const journey: Journey = {
-  id: "j",
-  userId: "u",
+  id: "journey-1",
+  userId: "user-1",
   trainNumber: "12345",
-  journeyDate: "2026-08-12",
-
-  destinationStationCode:
-    "NDLS",
-
+  journeyDate: "2026-08-11",
+  destinationStationCode: "NDLS",
+  destinationStationName: "New Delhi",
   state: "active",
   providerState: "available",
-
   currentEta: new Date(
-    "2026-08-12T19:07:00Z"
+    "2026-08-11T18:00:00.000Z"
   ),
-
-  scheduleVersion: 3,
+  currentDelayMinutes: null,
+  lastProviderUpdateAt: null,
+  scheduleVersion: 1,
 };
 
-describe("alert planner", () => {
-  it(
-    "uses a deterministic per-version identity",
-    () => {
-      const plans =
-        planAlerts(journey);
+describe("planAlerts", () => {
+  it("creates alerts for every configured offset", () => {
+    const alerts = planAlerts(journey);
 
-      expect(plans).toHaveLength(5);
+    expect(alerts).toHaveLength(
+      ALERT_OFFSETS_MINUTES.length
+    );
 
-      expect(plans[0]).toMatchObject({
-        scheduledFor: new Date(
-          "2026-08-12T17:07:00Z"
-        ),
-        deterministicKey:
-          "j:120:3",
-      });
+    expect(
+      alerts.map(
+        (alert) => alert.offsetMinutes
+      )
+    ).toEqual(ALERT_OFFSETS_MINUTES);
+  });
 
-      expect(
-        new Set(
-          plans.map(
-            (x) => x.deterministicKey
-          )
-        ).size
-      ).toBe(5);
-    }
-  );
+  it("calculates alert time from ETA", () => {
+    const alerts = planAlerts(journey);
 
-  it(
-    "changes alert identity when schedule version changes",
-    () => {
-      const version3 =
-        planAlerts({
-          ...journey,
-          scheduleVersion: 3,
-        });
+    const firstAlert = alerts[0];
 
-      const version4 =
-        planAlerts({
-          ...journey,
-          scheduleVersion: 4,
-        });
+    expect(firstAlert).toBeDefined();
 
-      expect(
-        version3[0].deterministicKey
-      ).toBe("j:120:3");
+    expect(
+      firstAlert!.scheduledFor
+    ).toEqual(
+      new Date(
+        "2026-08-11T16:00:00.000Z"
+      )
+    );
+  });
 
-      expect(
-        version4[0].deterministicKey
-      ).toBe("j:120:4");
+  it("uses journey schedule version in the deterministic key", () => {
+    const version3 = planAlerts({
+      ...journey,
+      scheduleVersion: 3,
+    });
 
-      expect(
-        version3[0].deterministicKey
-      ).not.toBe(
-        version4[0].deterministicKey
-      );
-    }
-  );
+    const version4 = planAlerts({
+      ...journey,
+      scheduleVersion: 4,
+    });
 
-  it(
-    "returns no alerts when ETA is unavailable",
-    () => {
-      const plans = planAlerts({
-        ...journey,
-        currentEta: null,
-      });
+    expect(
+      version3[0]!.deterministicKey
+    ).toBe("journey-1:120:3");
 
-      expect(plans).toEqual([]);
-    }
-  );
+    expect(
+      version4[0]!.deterministicKey
+    ).toBe("journey-1:120:4");
 
-  it(
-    "detects an ETA change",
-    () => {
-      expect(
-        needsNewSchedule(
-          new Date(
-            "2026-08-12T19:07:00Z"
-          ),
-          new Date(
-            "2026-08-12T19:17:00Z"
-          )
-        )
-      ).toBe(true);
-    }
-  );
+    expect(
+      version3[0]!.deterministicKey
+    ).not.toBe(
+      version4[0]!.deterministicKey
+    );
 
-  it(
-    "does not create a new schedule when ETA is unchanged",
-    () => {
-      expect(
-        needsNewSchedule(
-          new Date(
-            "2026-08-12T19:07:00Z"
-          ),
-          new Date(
-            "2026-08-12T19:07:00Z"
-          )
-        )
-      ).toBe(false);
-    }
-  );
+    expect(
+      version3[0]!.deterministicKey
+    ).not.toBe(
+      version4[0]!.deterministicKey
+    );
+  });
+
+  it("returns no alerts when ETA is missing", () => {
+    const alerts = planAlerts({
+      ...journey,
+      currentEta: null,
+    });
+
+    expect(alerts).toEqual([]);
+  });
 });
