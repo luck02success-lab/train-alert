@@ -1,13 +1,27 @@
-import {
-  ALERT_OFFSETS_MINUTES,
-  type AlertPlan,
-  type Journey,
-} from "./domain.js";
+import type { Journey } from "./domain.js";
+
+export interface AlertPlan {
+  journeyId: string;
+  offsetMinutes: number;
+  scheduleVersion: number;
+  scheduledFor: Date;
+  deterministicKey: string;
+}
+
+export const ALERT_OFFSETS_MINUTES = [
+  120,
+  60,
+  30,
+  15,
+  0,
+] as const;
 
 export function planAlerts(
   journey: Journey
 ): AlertPlan[] {
-  if (!journey.currentEta) {
+  const eta = journey.currentEta;
+
+  if (!eta) {
     return [];
   }
 
@@ -18,21 +32,11 @@ export function planAlerts(
       scheduleVersion:
         journey.scheduleVersion,
       scheduledFor: new Date(
-        journey.currentEta.getTime() -
+        eta.getTime() -
           offsetMinutes * 60_000
       ),
       deterministicKey:
         `${journey.id}:${offsetMinutes}:${journey.scheduleVersion}`,
     })
-  );
-}
-
-export function needsNewSchedule(
-  previousEta: Date | null,
-  nextEta: Date | null
-): boolean {
-  return (
-    previousEta?.getTime() !==
-    nextEta?.getTime()
   );
 }

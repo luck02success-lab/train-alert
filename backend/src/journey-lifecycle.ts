@@ -104,6 +104,8 @@ export function newJourney(
     journeyDate: live.journeyDate,
     destinationStationCode:
       destination.stationCode,
+    destinationStationName:
+      destination.stationName,
     state:
       live.status === "running"
         ? "active"
@@ -111,6 +113,8 @@ export function newJourney(
     providerState: "available",
     currentEta:
       destinationEta(destination),
+    currentDelayMinutes: null,
+    lastProviderUpdateAt: null,
     scheduleVersion: 0,
   };
 }
@@ -118,19 +122,23 @@ export function newJourney(
 export function initialAlerts(
   journey: Journey
 ) {
-  if (!journey.currentEta) {
+  const { currentEta } = journey;
+
+  if (!currentEta) {
     throw new JourneyLifecycleError(
       "DESTINATION_ETA_UNAVAILABLE",
       "An arrival time is not available for this destination."
     );
   }
 
+  const etaMillis = currentEta.getTime();
+
   return ALERT_OFFSETS_MINUTES.map(
     (offset) => ({
       journeyId: journey.id,
       offset,
       scheduledFor: new Date(
-        journey.currentEta!.getTime() -
+        etaMillis -
           offset * 60_000
       ),
       state: "pending" as const,
