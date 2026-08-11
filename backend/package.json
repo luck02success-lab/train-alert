@@ -2,6 +2,19 @@
   "name": "train-alert-backend",
   "private": true,
   "type": "module",
-  "scripts": {"test":"vitest run", "typecheck":"tsc --noEmit", "lint":"tsc --noEmit"},
-  "devDependencies": {"@types/node":"^22.0.0", "typescript":"^5.7.0", "vitest":"^2.1.0"}
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.21.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "@vercel/node": "^5.9.8",
+    "pg": "^8.23.0"
+  }
 }

@@ -1,37 +1,260 @@
-import type { RailwayProvider, LiveTrain } from "../domain.js";
+export interface TrainLiveStop {
+  stationCode: string;
+  stationName: string;
 
-export class ProviderError extends Error { constructor(readonly code: "UNAUTHORIZED"|"TRAIN_NOT_FOUND"|"RATE_LIMITED"|"UNAVAILABLE"|"MALFORMED_RESPONSE", message = "Railway data is currently unavailable.") { super(message); } }
-type Json = Record<string, unknown>;
-const obj=(value:unknown):Json=> { if (!value || typeof value!=="object") throw new ProviderError("MALFORMED_RESPONSE"); return value as Json; };
-const str=(v:unknown)=>typeof v === "string" ? v : null;
-const num=(v:unknown)=>typeof v === "number" && Number.isFinite(v) ? v : null;
-const date=(v:unknown)=> { const s=str(v); if (!s || Number.isNaN(Date.parse(s))) return null; return new Date(s); };
+  scheduledArrival: string | null;
+  scheduledDeparture: string | null;
 
-/** Server-only adapter for documented GET /v1/trains/{number}/live. Never expose raw provider JSON. */
-export class RailRadarProvider implements RailwayProvider {
-  constructor(private readonly apiKey=process.env.RAILRADAR_API_KEY, private readonly fetcher: typeof fetch=fetch) { if (!apiKey) throw new Error("RAILRADAR_API_KEY is required"); }
-  async getLiveTrain(trainNumber:string, journeyDate:string):Promise<LiveTrain> {
-    let response: Response;
-    try { response=await this.fetcher(`https://api.railradar.in/v1/trains/${encodeURIComponent(trainNumber)}/live?date=${encodeURIComponent(journeyDate)}`,{headers:{Authorization:`Bearer ${this.apiKey}`},signal:AbortSignal.timeout(8_000)}); }
-    catch { throw new ProviderError("UNAVAILABLE"); }
-    if (!response.ok) throw new ProviderError(response.status===401?"UNAUTHORIZED":response.status===404?"TRAIN_NOT_FOUND":response.status===429?"RATE_LIMITED":"UNAVAILABLE");
-    let body:Json; try { body=obj(await response.json()); } catch { throw new ProviderError("MALFORMED_RESPONSE"); }
-    const data=obj(body.data); const route=(Array.isArray(data.route)?data.route:[]).map(x=>obj(x));
-    // Domain's legacy minimal LiveTrain remains intentionally small; full normalized HTTP output is below.
-    const last=route.length ? route[route.length-1]! : null;
-    return {trainNumber:str(data.trainNumber)??trainNumber,observedAt:date(data.lastUpdatedAt)??new Date(),destination:last&&str(last.stationCode)?{code:str(last.stationCode)!,eta:date(last.actualArrival)??date(last.scheduledArrival)??date(last.expectedArrival)??new Date(NaN)}:null};
+  expectedArrival: string | null;
+  expectedDeparture: string | null;
+
+  actualArrival: string | null;
+  actualDeparture: string | null;
+
+  delayMinutes: number | null;
+  status: string | null;
+}
+
+export interface TrainLiveStatus {
+  trainNumber: string;
+  journeyDate: string;
+
+  status:
+    | "running"
+    | "not-started"
+    | "completed"
+    | "unknown";
+
+  currentStation: string | null;
+  currentStationCode: string | null;
+  previousStation: string | null;
+  nextStation: string | null;
+
+  delayMinutes: number | null;
+  latitude: number | null;
+  longitude: number | null;
+
+  observedAt?: Date;
+
+  stops: TrainLiveStop[];
+}
+
+export class ProviderError extends Error {
+  constructor(
+    readonly code:
+      | "UNAUTHORIZED"
+      | "TRAIN_NOT_FOUND"
+      | "RATE_LIMITED"
+      | "UNAVAILABLE"
+      | "MALFORMED_RESPONSE",
+    message = "Railway data is currently unavailable."
+  ) {
+    super(message);
   }
-  async searchStations(_query:string):Promise<Array<{code:string;name:string}>> { throw new ProviderError("UNAVAILABLE", "Station search is not yet supported by the configured provider contract."); }
 }
-export interface TrainLiveStatus { trainNumber:string; journeyDate:string; status:string|null; currentStation:string|null; currentStationCode:string|null; previousStation:string|null; nextStation:string|null; delayMinutes:number|null; latitude:number|null; longitude:number|null; stops: Array<{stationCode:string;stationName:string;scheduledArrival:string|null;scheduledDeparture:string|null;expectedArrival:string|null;expectedDeparture:string|null;actualArrival:string|null;actualDeparture:string|null;delayMinutes:number|null;status:string|null}>; }
-export function normalizeLive(body:unknown, journeyDate:string):TrainLiveStatus {
- const data=obj(obj(body).data); const location: Json|null=data.currentLocation ? obj(data.currentLocation) : null; const stationCode=location ? str(location.stationCode) : null; const route: Json[]=(Array.isArray(data.route)?data.route:[]).map(x=>obj(x));
- const byCode=(v:unknown)=>{const x:Json|null=v ? obj(v) : null; return x?str(x.stationName):null};
- return {trainNumber:str(data.trainNumber)??"",journeyDate,status:str(data.status),currentStation:route.find(x=>str(x.stationCode)===stationCode)?str(route.find(x=>str(x.stationCode)===stationCode)!.stationName):null,currentStationCode:stationCode,previousStation:byCode(data.previousHalt),nextStation:byCode(data.nextHalt),delayMinutes:num(data.delayMinutes),latitude:null,longitude:null,stops:route.map(s=>({stationCode:str(s.stationCode)??"",stationName:str(s.stationName)??"",scheduledArrival:str(s.scheduledArrival),scheduledDeparture:str(s.scheduledDeparture),expectedArrival:null,expectedDeparture:null,actualArrival:str(s.actualArrival),actualDeparture:str(s.actualDeparture),delayMinutes:num(s.delayArrival)??num(s.delayDeparture),status:str(s.status)}))};
+
+type Json = Record<string, unknown>;
+
+function object(value: unknown): Json {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ProviderError("MALFORMED_RESPONSE");
+  }
+
+  return value as Json;
 }
-export async function fetchLiveStatus(trainNumber:string, journeyDate:string, apiKey=process.env.RAILRADAR_API_KEY, fetcher:typeof fetch=fetch):Promise<TrainLiveStatus> {
-  if (!apiKey) throw new ProviderError("UNAUTHORIZED");
-  let response:Response; try { response=await fetcher(`https://api.railradar.in/v1/trains/${encodeURIComponent(trainNumber)}/live?date=${encodeURIComponent(journeyDate)}`,{headers:{Authorization:`Bearer ${apiKey}`},signal:AbortSignal.timeout(8_000)}); } catch { throw new ProviderError("UNAVAILABLE"); }
-  if (!response.ok) throw new ProviderError(response.status===401?"UNAUTHORIZED":response.status===404?"TRAIN_NOT_FOUND":response.status===429?"RATE_LIMITED":"UNAVAILABLE");
-  try { return normalizeLive(await response.json(),journeyDate); } catch(e) { if(e instanceof ProviderError) throw e; throw new ProviderError("MALFORMED_RESPONSE"); }
+
+function string(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function number(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : null;
+}
+
+function dateString(value: unknown): string | null {
+  const valueString = string(value);
+
+  if (!valueString) {
+    return null;
+  }
+
+  const parsed = new Date(valueString);
+
+  return Number.isNaN(parsed.getTime())
+    ? null
+    : valueString;
+}
+
+export class RailRadarProvider {
+  constructor(
+    private readonly apiKey = process.env.RAILRADAR_API_KEY,
+    private readonly fetcher: typeof fetch = fetch
+  ) {
+    if (!apiKey) {
+      throw new Error("RAILRADAR_API_KEY is required");
+    }
+  }
+
+  async getLiveTrain(
+    trainNumber: string,
+    journeyDate: string
+  ): Promise<TrainLiveStatus> {
+    let response: Response;
+
+    try {
+      response = await this.fetcher(
+        `https://api.railradar.in/v1/trains/${encodeURIComponent(
+          trainNumber
+        )}/live?date=${encodeURIComponent(journeyDate)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          signal: AbortSignal.timeout(8_000),
+        }
+      );
+    } catch {
+      throw new ProviderError("UNAVAILABLE");
+    }
+
+    if (!response.ok) {
+      throw new ProviderError(
+        response.status === 401
+          ? "UNAUTHORIZED"
+          : response.status === 404
+            ? "TRAIN_NOT_FOUND"
+            : response.status === 429
+              ? "RATE_LIMITED"
+              : "UNAVAILABLE"
+      );
+    }
+
+    let body: Json;
+
+    try {
+      body = object(await response.json());
+    } catch (error) {
+      if (error instanceof ProviderError) {
+        throw error;
+      }
+
+      throw new ProviderError("MALFORMED_RESPONSE");
+    }
+
+    const data = object(body.data);
+
+    const rawRoute = Array.isArray(data.route)
+      ? data.route
+      : [];
+
+    if (rawRoute.length === 0) {
+      throw new ProviderError("MALFORMED_RESPONSE");
+    }
+
+    const stops: TrainLiveStop[] = rawRoute.map(
+      (rawStop) => {
+        const stop = object(rawStop);
+
+        const stationCode = string(
+          stop.stationCode
+        );
+
+        if (!stationCode) {
+          throw new ProviderError(
+            "MALFORMED_RESPONSE"
+          );
+        }
+
+        return {
+          stationCode,
+          stationName:
+            string(stop.stationName) ?? "",
+
+          scheduledArrival:
+            dateString(stop.scheduledArrival),
+
+          scheduledDeparture:
+            dateString(stop.scheduledDeparture),
+
+          expectedArrival:
+            dateString(stop.expectedArrival),
+
+          expectedDeparture:
+            dateString(stop.expectedDeparture),
+
+          actualArrival:
+            dateString(stop.actualArrival),
+
+          actualDeparture:
+            dateString(stop.actualDeparture),
+
+          delayMinutes:
+            number(stop.delayArrival) ??
+            number(stop.delayDeparture),
+
+          status:
+            string(stop.status),
+        };
+      }
+    );
+
+    const rawStatus = string(data.status);
+
+    const status: TrainLiveStatus["status"] =
+      rawStatus === "running" ||
+      rawStatus === "not-started" ||
+      rawStatus === "completed"
+        ? rawStatus
+        : "unknown";
+
+    const observedAtRaw =
+      string(data.lastUpdatedAt);
+
+    const observedAt = observedAtRaw
+      ? new Date(observedAtRaw)
+      : new Date();
+
+    if (Number.isNaN(observedAt.getTime())) {
+      throw new ProviderError(
+        "MALFORMED_RESPONSE"
+      );
+    }
+
+    return {
+      trainNumber:
+        string(data.trainNumber) ??
+        trainNumber,
+
+      journeyDate,
+
+      status,
+
+      currentStation:
+        string(data.currentStation),
+
+      currentStationCode:
+        string(data.currentStationCode),
+
+      previousStation:
+        string(data.previousStation),
+
+      nextStation:
+        string(data.nextStation),
+
+      delayMinutes:
+        number(data.delayMinutes),
+
+      latitude:
+        number(data.latitude),
+
+      longitude:
+        number(data.longitude),
+
+      observedAt,
+
+      stops,
+    };
+  }
 }
