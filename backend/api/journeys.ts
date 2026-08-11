@@ -1,5 +1,4 @@
 import type { CreateJourneyRequest } from "../src/api-contract.js";
-import { auth } from "../src/api-runtime.js";
 import {
   JourneyServiceError,
 } from "../src/journey-service.js";
@@ -14,14 +13,12 @@ function json(
   return Response.json(body, { status });
 }
 
-async function authenticate(
-  request: Request
-) {
+async function authenticate(request: Request) {
   try {
+    const { auth } = await import("../src/api-runtime.js");
+
     return await auth.authenticate({
-      headers: Object.fromEntries(
-        request.headers.entries()
-      ),
+      headers: Object.fromEntries(request.headers.entries()),
     });
   } catch {
     throw new JourneyServiceError(

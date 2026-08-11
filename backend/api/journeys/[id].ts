@@ -1,4 +1,4 @@
-import { auth } from "../../src/api-runtime.js";
+import type { AuthProvider } from "../../src/auth.js";
 import {
   JourneyServiceError,
 } from "../../src/journey-service.js";
@@ -7,8 +7,27 @@ import { ApiError } from "../../src/train-service.js";
 function json(
   body: unknown,
   status = 200
-) {
+): Response {
   return Response.json(body, { status });
+}
+
+async function authenticate(
+  request: Request,
+  authProvider: AuthProvider
+) {
+  try {
+    return await authProvider.authenticate({
+      headers: Object.fromEntries(
+        request.headers.entries()
+      ),
+    });
+  } catch {
+    throw new JourneyServiceError(
+      "UNAUTHENTICATED",
+      "Authentication required.",
+      401
+    );
+  }
 }
 
 function errorResponse(error: unknown) {
@@ -49,24 +68,6 @@ function errorResponse(error: unknown) {
   );
 }
 
-async function authenticate(
-  request: Request
-) {
-  try {
-    return await auth.authenticate({
-      headers: Object.fromEntries(
-        request.headers.entries()
-      ),
-    });
-  } catch {
-    throw new JourneyServiceError(
-      "UNAUTHENTICATED",
-      "Authentication required.",
-      401
-    );
-  }
-}
-
 export async function GET(
   request: Request,
   context: {
@@ -74,13 +75,17 @@ export async function GET(
   }
 ): Promise<Response> {
   try {
+    const {
+      auth,
+      journeyService,
+    } = await import(
+      "../../src/api-runtime.js"
+    );
+
     const { userId } =
-      await authenticate(request);
+      await authenticate(request, auth);
 
     const { id } = await context.params;
-
-    const { journeyService } =
-      await import("../../src/api-runtime.js");
 
     const journey =
       await journeyService.get(userId, id);
@@ -100,13 +105,17 @@ export async function DELETE(
   }
 ): Promise<Response> {
   try {
+    const {
+      auth,
+      journeyService,
+    } = await import(
+      "../../src/api-runtime.js"
+    );
+
     const { userId } =
-      await authenticate(request);
+      await authenticate(request, auth);
 
     const { id } = await context.params;
-
-    const { journeyService } =
-      await import("../../src/api-runtime.js");
 
     const journey =
       await journeyService.cancel(userId, id);

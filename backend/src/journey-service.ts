@@ -1,13 +1,12 @@
 import type { Journey } from "./domain.js";
 import type { JourneyRepository } from "./journey-repository.js";
 import {
+  destinationEta,
   newJourney,
+  resolveDestination,
   JourneyLifecycleError,
 } from "./journey-lifecycle.js";
-import {
-  ApiError,
-  type TrainService,
-} from "./train-service.js";
+import type { TrainService } from "./train-service.js";
 
 export class JourneyServiceError extends Error {
   constructor(
@@ -45,9 +44,79 @@ export class JourneyService {
         input.destinationStationCode
       );
 
-      return await this.repository.createWithAlerts(
-        journey
+      return await this.repository.createWithAlerts(journey);
+    } catch (error) {
+      if (error instanceof JourneyLifecycleError) {
+        throw new JourneyServiceError(
+          error.code,
+          error.message,
+          400
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async refreshEta(
+    userId: string,
+    journeyId: string
+  ): Promise<Journey> {
+    const journey =
+      await this.repository.findByIdForUser(
+        journeyId,
+        userId
       );
+
+    if (!journey) {
+      throw new JourneyServiceError(
+        "JOURNEY_NOT_FOUND",
+        "Journey not found.",
+        404
+      );
+    }
+
+    if (
+      journey.state !== "scheduled" &&
+      journey.state !== "active"
+    ) {
+      throw new JourneyServiceError(
+        "JOURNEY_REFRESH_REJECTED",
+        "A terminal journey cannot be refreshed.",
+        409
+      );
+    }
+
+    const live = await this.trains.live(
+      journey.trainNumber,
+      journey.journeyDate
+    );
+
+    try {
+      const destination = resolveDestination(
+        live,
+        journey.destinationStationCode
+      );
+
+      const eta = destinationEta(destination);
+
+      const refreshed =
+        await this.repository.refreshEta(
+          journey.id,
+          eta,
+          destination.delayMinutes,
+          live.observedAt ?? new Date()
+        );
+
+      if (!refreshed) {
+        throw new JourneyServiceError(
+          "JOURNEY_REFRESH_REJECTED",
+          "The journey could not be refreshed because the provider observation is stale.",
+          409
+        );
+      }
+
+      return refreshed;
     } catch (error) {
       if (error instanceof JourneyLifecycleError) {
         throw new JourneyServiceError(
@@ -107,9 +176,7 @@ export class JourneyService {
     return journey;
   }
 
-  async response(
-    journey: Journey
-  ) {
+  async response(journey: Journey) {
     const nextAlert =
       await this.repository.nextAlertForJourney(
         journey.id
