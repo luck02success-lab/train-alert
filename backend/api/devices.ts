@@ -15,16 +15,19 @@ function json(
 
 async function authenticate(
   request: Request
-) {
-  try {
-    const { auth } =
-      await import("../src/api-runtime.js");
+): Promise<string> {
+  const { auth } =
+    await import("../src/api-runtime.js");
 
-    return await auth.authenticate({
-      headers: Object.fromEntries(
-        request.headers.entries()
-      ),
-    });
+  try {
+    const result =
+      await auth.authenticate({
+        headers: Object.fromEntries(
+          request.headers.entries()
+        ),
+      });
+
+    return result.userId;
   } catch {
     throw new DeviceServiceError(
       "UNAUTHENTICATED",
@@ -36,7 +39,7 @@ async function authenticate(
 
 function errorResponse(
   error: unknown
-) {
+): Response {
   if (
     error instanceof DeviceServiceError
   ) {
@@ -65,15 +68,37 @@ function errorResponse(
   );
 }
 
+export async function GET(
+  request: Request
+): Promise<Response> {
+  try {
+    const userId =
+      await authenticate(request);
+
+    const { deviceService } =
+      await import("../src/api-runtime.js");
+
+    const devices =
+      await deviceService.list(userId);
+
+    return json(
+      devices.map((device) =>
+        deviceService.response(device)
+      )
+    );
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
 export async function POST(
   request: Request
 ): Promise<Response> {
   try {
-    const { userId } =
+    const userId =
       await authenticate(request);
 
-    let body:
-      | Partial<RegisterDeviceRequest>;
+    let body: RegisterDeviceRequest;
 
     try {
       body = await request.json();
@@ -90,9 +115,30 @@ export async function POST(
       );
     }
 
+    /*
+     * Validate the HTTP payload here as well as in
+     * DeviceService. This protects the API boundary
+     * and keeps the behaviour deterministic when the
+     * service is mocked in tests.
+     */
+
     if (
-      body.platform !== "android"
+      !body ||
+      typeof body !== "object"
     ) {
+      return json(
+        {
+          error: {
+            code: "INVALID_REQUEST",
+            message:
+              "Request body must be an object.",
+          },
+        },
+        400
+      );
+    }
+
+    if (body.platform !== "android") {
       return json(
         {
           error: {
@@ -123,11 +169,8 @@ export async function POST(
       );
     }
 
-    const {
-      deviceService,
-    } = await import(
-      "../src/api-runtime.js"
-    );
+    const { deviceService } =
+      await import("../src/api-runtime.js");
 
     const device =
       await deviceService.register(
