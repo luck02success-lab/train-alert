@@ -18,6 +18,9 @@ class TrainAlertFirebaseMessagingService :
         private const val TAG =
             "TrainAlertFCM"
 
+        const val OPEN_JOURNEY_ACTION =
+            "com.trainalert.OPEN_JOURNEY"
+
         private const val CHANNEL_ID =
             "train_alerts"
 
@@ -92,10 +95,6 @@ class TrainAlertFirebaseMessagingService :
     override fun onDeletedMessages() {
         super.onDeletedMessages()
 
-        /*
-         * The local device registration may need to
-         * be refreshed after FCM drops pending messages.
-         */
         DeviceRegistrationManager
             .registerCurrentToken(
                 applicationContext
@@ -114,6 +113,9 @@ class TrainAlertFirebaseMessagingService :
                 this,
                 MainActivity::class.java
             ).apply {
+                action =
+                    OPEN_JOURNEY_ACTION
+
                 flags =
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -143,8 +145,12 @@ class TrainAlertFirebaseMessagingService :
 
         val notificationId =
             NOTIFICATION_ID_BASE +
-                (journeyId?.hashCode()?.and(0x7fffffff)
-                    ?: 0)
+                (
+                    journeyId
+                        ?.hashCode()
+                        ?.and(0x7fffffff)
+                        ?: 0
+                    )
 
         val notification =
             NotificationCompat.Builder(
@@ -152,7 +158,7 @@ class TrainAlertFirebaseMessagingService :
                 CHANNEL_ID
             )
                 .setSmallIcon(
-                    android.R.drawable.ic_dialog_info
+                    R.drawable.ic_train_alert
                 )
                 .setContentTitle(title)
                 .setContentText(body)
@@ -177,7 +183,8 @@ class TrainAlertFirebaseMessagingService :
                     notification
                 )
         } catch (
-            securityException: SecurityException
+            securityException:
+            SecurityException
         ) {
             Log.e(
                 TAG,
@@ -190,7 +197,7 @@ class TrainAlertFirebaseMessagingService :
     private fun createNotificationChannel() {
         if (
             Build.VERSION.SDK_INT <
-                Build.VERSION_CODES.O
+            Build.VERSION_CODES.O
         ) {
             return
         }

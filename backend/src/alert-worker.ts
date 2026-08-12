@@ -31,14 +31,20 @@ export class AlertWorker {
       } catch (error) {
         console.error(
           "Failed to process alert",
-          alert.id,
-          error
+          {
+            alertId: alert.id,
+            journeyId:
+              alert.journeyId,
+            error,
+          }
         );
 
         /*
-         * Never leave an alert permanently stuck
-         * in "sending" because of an unexpected
-         * application error.
+         * Do not leave an alert permanently stuck in
+         * "sending" after an unexpected application error.
+         *
+         * Already-sent deliveries remain protected by
+         * the UNIQUE(alert_id, device_id) constraint.
          */
         try {
           await this.repository
@@ -46,8 +52,10 @@ export class AlertWorker {
         } catch (releaseError) {
           console.error(
             "Failed to release alert",
-            alert.id,
-            releaseError
+            {
+              alertId: alert.id,
+              error: releaseError,
+            }
           );
         }
       }

@@ -73,6 +73,16 @@ export class FirebaseFcmClient
         },
 
         data: message.data,
+
+        android: {
+          notification: {
+            channelId:
+              "train_alerts",
+
+            clickAction:
+              "com.trainalert.OPEN_JOURNEY",
+          },
+        },
       });
 
       return {
@@ -87,9 +97,11 @@ export class FirebaseFcmClient
 
       return {
         success: false,
+
         errorCode:
           value.code ??
           "FCM_SEND_FAILED",
+
         errorMessage:
           value.message ??
           "FCM notification failed.",

@@ -1,6 +1,10 @@
 package com.trainalert
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -8,6 +12,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -25,13 +31,17 @@ data class Journey(
 
 object JourneyApi {
 
-    private const val TAG = "JourneyApi"
+    private const val TAG =
+        "JourneyApi"
 
-    private val API_BASE_URL =
-        BuildConfig.API_BASE_URL
+    private const val PREFS_NAME =
+        "train_alert"
 
-    private const val PREFS_NAME = "train_alert"
-    private const val USER_ID_KEY = "user_id"
+    private const val USER_ID_KEY =
+        "user_id"
+
+    private val mainHandler =
+        Handler(Looper.getMainLooper())
 
     private val client =
         OkHttpClient.Builder()
@@ -67,7 +77,8 @@ object JourneyApi {
                     getUserId(context)
 
                 if (userId == null) {
-                    onError(
+                    postError(
+                        onError,
                         "User is not registered yet."
                     )
                     return@execute
@@ -76,7 +87,7 @@ object JourneyApi {
                 val request =
                     Request.Builder()
                         .url(
-                            "$API_BASE_URL/api/journeys"
+                            "${BuildConfig.API_BASE_URL}/api/journeys"
                         )
                         .header(
                             "x-user-id",
@@ -98,10 +109,11 @@ object JourneyApi {
                             Log.e(
                                 TAG,
                                 "List journeys failed: " +
-                                    "${response.code} $body"
+                                    "${response.code}"
                             )
 
-                            onError(
+                            postError(
+                                onError,
                                 parseErrorMessage(
                                     body,
                                     response.code,
@@ -112,11 +124,13 @@ object JourneyApi {
                             return@use
                         }
 
-                        onSuccess(
+                        val journeys =
                             parseJourneyList(body)
-                        )
-                    }
 
+                        mainHandler.post {
+                            onSuccess(journeys)
+                        }
+                    }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -124,9 +138,12 @@ object JourneyApi {
                     error
                 )
 
-                onError(
-                    error.message
-                        ?: "Unable to connect to the server."
+                postError(
+                    onError,
+                    networkErrorMessage(
+                        context,
+                        error
+                    )
                 )
             }
         }
@@ -144,7 +161,8 @@ object JourneyApi {
                     getUserId(context)
 
                 if (userId == null) {
-                    onError(
+                    postError(
+                        onError,
                         "User is not registered yet."
                     )
                     return@execute
@@ -153,7 +171,7 @@ object JourneyApi {
                 val request =
                     Request.Builder()
                         .url(
-                            "$API_BASE_URL/api/journeys/$journeyId"
+                            "${BuildConfig.API_BASE_URL}/api/journeys/$journeyId"
                         )
                         .header(
                             "x-user-id",
@@ -175,10 +193,11 @@ object JourneyApi {
                             Log.e(
                                 TAG,
                                 "Get journey failed: " +
-                                    "${response.code} $body"
+                                    "${response.code}"
                             )
 
-                            onError(
+                            postError(
+                                onError,
                                 parseErrorMessage(
                                     body,
                                     response.code,
@@ -189,13 +208,15 @@ object JourneyApi {
                             return@use
                         }
 
-                        onSuccess(
+                        val journey =
                             parseJourney(
                                 JSONObject(body)
                             )
-                        )
-                    }
 
+                        mainHandler.post {
+                            onSuccess(journey)
+                        }
+                    }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -203,9 +224,12 @@ object JourneyApi {
                     error
                 )
 
-                onError(
-                    error.message
-                        ?: "Unable to connect to the server."
+                postError(
+                    onError,
+                    networkErrorMessage(
+                        context,
+                        error
+                    )
                 )
             }
         }
@@ -225,7 +249,8 @@ object JourneyApi {
                     getUserId(context)
 
                 if (userId == null) {
-                    onError(
+                    postError(
+                        onError,
                         "User is not registered yet."
                     )
                     return@execute
@@ -250,7 +275,7 @@ object JourneyApi {
                 val request =
                     Request.Builder()
                         .url(
-                            "$API_BASE_URL/api/journeys"
+                            "${BuildConfig.API_BASE_URL}/api/journeys"
                         )
                         .header(
                             "x-user-id",
@@ -282,10 +307,11 @@ object JourneyApi {
                             Log.e(
                                 TAG,
                                 "Create journey failed: " +
-                                    "${response.code} $body"
+                                    "${response.code}"
                             )
 
-                            onError(
+                            postError(
+                                onError,
                                 parseErrorMessage(
                                     body,
                                     response.code,
@@ -296,13 +322,15 @@ object JourneyApi {
                             return@use
                         }
 
-                        onSuccess(
+                        val journey =
                             parseJourney(
                                 JSONObject(body)
                             )
-                        )
-                    }
 
+                        mainHandler.post {
+                            onSuccess(journey)
+                        }
+                    }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -310,9 +338,12 @@ object JourneyApi {
                     error
                 )
 
-                onError(
-                    error.message
-                        ?: "Unable to connect to the server."
+                postError(
+                    onError,
+                    networkErrorMessage(
+                        context,
+                        error
+                    )
                 )
             }
         }
@@ -330,7 +361,8 @@ object JourneyApi {
                     getUserId(context)
 
                 if (userId == null) {
-                    onError(
+                    postError(
+                        onError,
                         "User is not registered yet."
                     )
                     return@execute
@@ -339,7 +371,7 @@ object JourneyApi {
                 val request =
                     Request.Builder()
                         .url(
-                            "$API_BASE_URL/api/journeys/$journeyId"
+                            "${BuildConfig.API_BASE_URL}/api/journeys/$journeyId"
                         )
                         .header(
                             "x-user-id",
@@ -361,10 +393,11 @@ object JourneyApi {
                             Log.e(
                                 TAG,
                                 "Cancel journey failed: " +
-                                    "${response.code} $body"
+                                    "${response.code}"
                             )
 
-                            onError(
+                            postError(
+                                onError,
                                 parseErrorMessage(
                                     body,
                                     response.code,
@@ -375,13 +408,15 @@ object JourneyApi {
                             return@use
                         }
 
-                        onSuccess(
+                        val journey =
                             parseJourney(
                                 JSONObject(body)
                             )
-                        )
-                    }
 
+                        mainHandler.post {
+                            onSuccess(journey)
+                        }
+                    }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -389,9 +424,12 @@ object JourneyApi {
                     error
                 )
 
-                onError(
-                    error.message
-                        ?: "Unable to connect to the server."
+                postError(
+                    onError,
+                    networkErrorMessage(
+                        context,
+                        error
+                    )
                 )
             }
         }
@@ -520,13 +558,86 @@ object JourneyApi {
             val error =
                 json.optJSONObject("error")
 
-            error?.optString(
-                "message"
-            )?.takeIf {
-                it.isNotBlank()
-            } ?: "$fallback ($statusCode)"
+            error
+                ?.optString("message")
+                ?.takeIf {
+                    it.isNotBlank()
+                }
+                ?: when (statusCode) {
+                    401 ->
+                        "Your session is no longer valid."
+
+                    404 ->
+                        "The requested journey was not found."
+
+                    409 ->
+                        "This journey cannot be changed right now."
+
+                    in 500..599 ->
+                        "The Train Alert service is temporarily unavailable."
+
+                    else ->
+                        "$fallback ($statusCode)"
+                }
         } catch (_: Exception) {
             "$fallback ($statusCode)"
+        }
+    }
+
+    private fun networkErrorMessage(
+        context: Context,
+        error: Exception
+    ): String {
+        if (
+            !hasNetwork(context)
+        ) {
+            return "No internet connection. Please check your network and try again."
+        }
+
+        return when (error) {
+            is SocketTimeoutException ->
+                "The request timed out. Please try again."
+
+            is IOException ->
+                "Unable to reach Train Alert. Please try again."
+
+            else ->
+                error.message
+                    ?.takeIf {
+                        it.isNotBlank()
+                    }
+                    ?: "Something went wrong. Please try again."
+        }
+    }
+
+    private fun hasNetwork(
+        context: Context
+    ): Boolean {
+        val manager =
+            context.getSystemService(
+                ConnectivityManager::class.java
+            ) ?: return true
+
+        val network =
+            manager.activeNetwork
+                ?: return false
+
+        val capabilities =
+            manager.getNetworkCapabilities(
+                network
+            ) ?: return false
+
+        return capabilities.hasCapability(
+            NetworkCapabilities.NET_CAPABILITY_INTERNET
+        )
+    }
+
+    private fun postError(
+        callback: (String) -> Unit,
+        message: String
+    ) {
+        mainHandler.post {
+            callback(message)
         }
     }
 }

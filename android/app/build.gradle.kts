@@ -13,14 +13,33 @@ android {
         applicationId = "com.trainalert"
         minSdk = 26
         targetSdk = 35
+
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
 
         buildConfigField(
-    "String",
-    "API_BASE_URL",
-    "\"https://train-alert-api.vercel.app\""
-)
+            "String",
+            "API_BASE_URL",
+            "\"https://train-alert-api.vercel.app\""
+        )
+    }
+
+    buildTypes {
+        debug {
+            isMinifyEnabled = false
+        }
+
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+
+            proguardFiles(
+                getDefaultProguardFile(
+                    "proguard-android-optimize.txt"
+                ),
+                "proguard-rules.pro"
+            )
+        }
     }
 
     compileOptions {
@@ -51,10 +70,14 @@ dependencies {
         "androidx.activity:activity-compose:1.10.1"
     )
 
-    implementation("androidx.compose.ui:ui")
+    implementation(
+        "androidx.compose.ui:ui"
+    )
+
     implementation(
         "androidx.compose.ui:ui-tooling-preview"
     )
+
     implementation(
         "androidx.compose.material3:material3"
     )
