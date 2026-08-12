@@ -65,7 +65,14 @@ export class NotificationService {
       await this.repository
         .getDevicesForAlert(alert.id);
 
+    /*
+     * There are no active devices for this journey.
+     * The alert has nothing left to deliver.
+     */
     if (devices.length === 0) {
+      await this.repository
+        .markAlertSent(alert.id);
+
       return;
     }
 
@@ -77,6 +84,11 @@ export class NotificationService {
             device.id
           );
 
+      /*
+       * A null delivery means another worker already
+       * owns a sending delivery or the notification
+       * has already been successfully sent.
+       */
       if (!delivery) {
         continue;
       }
@@ -87,6 +99,26 @@ export class NotificationService {
         device.token,
         alert
       );
+    }
+
+    /*
+     * Decide whether this alert is finished.
+     *
+     * failed deliveries remain retryable until the
+     * next_attempt_at time. The worker will pick the
+     * alert up again when that time arrives.
+     */
+    const summary =
+      await this.repository
+        .getDeliverySummary(alert.id);
+
+    if (
+      summary.pending === 0 &&
+      summary.sending === 0 &&
+      summary.failed === 0
+    ) {
+      await this.repository
+        .markAlertSent(alert.id);
     }
   }
 
@@ -107,11 +139,34 @@ export class NotificationService {
     const message =
       this.buildMessage(alert);
 
-    const result =
-      await this.fcm.send({
-        token,
-        ...message,
-      });
+    let result;
+
+    try {
+      result =
+        await this.fcm.send({
+          token,
+          ...message,
+        });
+    } catch (error) {
+      console.error(
+        "FCM client threw while sending notification",
+        {
+          deliveryId,
+          deviceId,
+          alertId: alert.id,
+          error,
+        }
+      );
+
+      result = {
+        success: false,
+        errorCode: "FCM_CLIENT_ERROR",
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : "FCM client error.",
+      };
+    }
 
     if (result.success) {
       await this.repository
@@ -188,10 +243,13 @@ export class NotificationService {
       data: {
         type:
           "journey_alert",
+
         journeyId:
           alert.journeyId,
+
         alertId:
           String(alert.id),
+
         offsetMinutes:
           String(offset),
       },

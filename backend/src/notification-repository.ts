@@ -35,6 +35,12 @@ export interface NotificationDelivery {
   nextAttemptAt: Date;
 }
 
+export interface NotificationDeliverySummary {
+  pending: number;
+  sending: number;
+  failed: number;
+}
+
 export interface NotificationRepository {
   claimDueAlerts(
     limit: number
@@ -66,6 +72,14 @@ export interface NotificationRepository {
 
   invalidateDevice(
     deviceId: string
+  ): Promise<void>;
+
+  getDeliverySummary(
+    alertId: number
+  ): Promise<NotificationDeliverySummary>;
+
+  markAlertSent(
+    alertId: number
   ): Promise<void>;
 
   releaseAlert(
@@ -108,37 +122,75 @@ export class PostgresNotificationRepository
   async claimDueAlerts(
     limit: number
   ): Promise<DueAlert[]> {
+    /*
+     * Recover deliveries that were left in "sending"
+     * by a crashed worker.
+     *
+     * A delivery stuck in "sending" for more than
+     * five minutes is safe to retry.
+     */
+    await this.db.query(
+  `
+  UPDATE notification_deliveries
+  SET
+    state = 'failed',
+    next_attempt_at = now(),
+    last_error_code = 'WORKER_TIMEOUT',
+    last_error_message =
+      'Previous notification worker timed out.',
+    updated_at = now()
+  WHERE state = 'sending'
+    AND updated_at <= now() - interval '5 minutes'
+  `,
+  []
+);
+
     const result =
       await this.db.query<AlertRow>(
         `
-        WITH claimed AS (
-          SELECT a.id
+        WITH candidates AS (
+          SELECT DISTINCT a.id
           FROM alerts a
-          WHERE a.state = 'pending'
-            AND a.scheduled_for <= now()
+          LEFT JOIN notification_deliveries d
+            ON d.alert_id = a.id
+          WHERE
+            (
+              a.state = 'pending'
+              AND a.scheduled_for <= now()
+            )
+            OR
+            (
+              a.state = 'sending'
+              AND d.state IN ('pending', 'failed')
+              AND d.next_attempt_at <= now()
+            )
           ORDER BY a.scheduled_for ASC
-          FOR UPDATE SKIP LOCKED
+          FOR UPDATE OF a SKIP LOCKED
           LIMIT $1
         )
         UPDATE alerts a
-        SET state = 'sending'
-        FROM claimed
-        WHERE a.id = claimed.id
+        SET
+          state = 'sending'
+        FROM candidates
+        WHERE a.id = candidates.id
         RETURNING
           a.id,
           a.journey_id AS "journeyId",
           a.offset_minutes AS "offsetMinutes",
           a.scheduled_for AS "scheduledFor",
+
           (
             SELECT j.train_number
             FROM journeys j
             WHERE j.id = a.journey_id
           ) AS "trainNumber",
+
           (
             SELECT j.destination_station_name
             FROM journeys j
             WHERE j.id = a.journey_id
           ) AS "destinationStationName",
+
           (
             SELECT j.current_eta
             FROM journeys j
@@ -151,18 +203,13 @@ export class PostgresNotificationRepository
     return result.rows.map(
       (row) => ({
         id: row.id,
-        journeyId:
-          row.journeyId,
-        offsetMinutes:
-          row.offsetMinutes,
-        scheduledFor:
-          row.scheduledFor,
-        trainNumber:
-          row.trainNumber,
+        journeyId: row.journeyId,
+        offsetMinutes: row.offsetMinutes,
+        scheduledFor: row.scheduledFor,
+        trainNumber: row.trainNumber,
         destinationStationName:
           row.destinationStationName,
-        currentEta:
-          row.currentEta,
+        currentEta: row.currentEta,
       })
     );
   }
@@ -230,9 +277,7 @@ export class PostgresNotificationRepository
         ]
       );
 
-    const row = result.rows[0];
-
-    return row ?? null;
+    return result.rows[0] ?? null;
   }
 
   async markSending(
@@ -317,6 +362,58 @@ export class PostgresNotificationRepository
         AND invalidated_at IS NULL
       `,
       [deviceId]
+    );
+  }
+
+  async getDeliverySummary(
+    alertId: number
+  ): Promise<NotificationDeliverySummary> {
+    const result =
+      await this.db.query<{
+        pending: number;
+        sending: number;
+        failed: number;
+      }>(
+        `
+        SELECT
+          COUNT(*) FILTER (
+            WHERE state = 'pending'
+          )::int AS pending,
+
+          COUNT(*) FILTER (
+            WHERE state = 'sending'
+          )::int AS sending,
+
+          COUNT(*) FILTER (
+            WHERE state = 'failed'
+          )::int AS failed
+        FROM notification_deliveries
+        WHERE alert_id = $1
+        `,
+        [alertId]
+      );
+
+    const row = result.rows[0];
+
+    return {
+      pending: row?.pending ?? 0,
+      sending: row?.sending ?? 0,
+      failed: row?.failed ?? 0,
+    };
+  }
+
+  async markAlertSent(
+    alertId: number
+  ): Promise<void> {
+    await this.db.query(
+      `
+      UPDATE alerts
+      SET
+        state = 'sent'
+      WHERE id = $1
+        AND state = 'sending'
+      `,
+      [alertId]
     );
   }
 

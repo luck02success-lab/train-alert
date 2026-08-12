@@ -1,13 +1,22 @@
 import { Client } from "pg";
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL =
+  process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
-  throw new Error("DATABASE_URL is required");
+  throw new Error(
+    "DATABASE_URL is required"
+  );
 }
 
 const JOURNEY_ID =
-  "d10bed1a-b39f-4446-ae91-1186a2e26c0c";
+  process.env.JOURNEY_ID;
+
+if (!JOURNEY_ID) {
+  throw new Error(
+    "JOURNEY_ID is required"
+  );
+}
 
 const client = new Client({
   connectionString: DATABASE_URL,
@@ -16,31 +25,38 @@ const client = new Client({
 await client.connect();
 
 try {
-  const result = await client.query(
-    `
-    INSERT INTO alerts (
-      journey_id,
-      offset_minutes,
-      scheduled_for,
-      state
-    )
-    VALUES (
-      $1,
-      0,
-      now() - interval '1 second',
-      'pending'
-    )
-    RETURNING
-      id,
-      journey_id,
-      offset_minutes,
-      scheduled_for,
-      state
-    `,
-    [JOURNEY_ID]
-  );
+  const result =
+    await client.query(
+      `
+      INSERT INTO alerts (
+        journey_id,
+        offset_minutes,
+        scheduled_for,
+        state
+      )
+      VALUES (
+        $1,
+        0,
+        now() - interval '1 second',
+        'pending'
+      )
+      RETURNING
+        id,
+        journey_id,
+        offset_minutes,
+        scheduled_for,
+        state
+      `,
+      [JOURNEY_ID]
+    );
 
-  console.log(result.rows[0]);
+  console.log(
+    JSON.stringify(
+      result.rows[0],
+      null,
+      2
+    )
+  );
 } finally {
   await client.end();
 }

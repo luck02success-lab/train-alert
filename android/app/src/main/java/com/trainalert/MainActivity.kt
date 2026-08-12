@@ -42,6 +42,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
+    
+    companion object {
+    const val EXTRA_JOURNEY_ID = "journeyId"
+}
 
     private val notificationPermissionLauncher =
         registerForActivityResult(
