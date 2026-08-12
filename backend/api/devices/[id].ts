@@ -14,9 +14,7 @@ async function authenticate(
 ) {
   try {
     const { auth } =
-      await import(
-        "../../src/api-runtime.js"
-      );
+      await import("../../src/api-runtime.js");
 
     return await auth.authenticate({
       headers: Object.fromEntries(
@@ -34,7 +32,7 @@ async function authenticate(
 
 function errorResponse(
   error: unknown
-) {
+): Response {
   if (
     error instanceof DeviceServiceError
   ) {
@@ -76,11 +74,10 @@ export async function DELETE(
     const { id } =
       await context.params;
 
-    const {
-      deviceService,
-    } = await import(
-      "../../src/api-runtime.js"
-    );
+    const { deviceService } =
+      await import(
+        "../../src/api-runtime.js"
+      );
 
     const device =
       await deviceService.invalidate(

@@ -6,6 +6,11 @@ export interface CreateJourneyRequest {
   destinationStationCode: string;
 }
 
+export interface UserResponse {
+  id: string;
+  createdAt: string;
+}
+
 export interface JourneyResponse {
   id: string;
   trainNumber: string;
