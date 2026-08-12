@@ -1,3 +1,70 @@
-import { ApiError, validateLiveQuery } from "../../../../src/train-service.js";
-import { fetchLiveStatus, ProviderError } from "../../../../src/providers/railradar.js";
-export default async function handler(req:any,res:any){try{const date=validateLiveQuery(req.query.number,req.query.date);res.status(200).json(await fetchLiveStatus(req.query.number,date));}catch(e){if(e instanceof ProviderError){const x={UNAUTHORIZED:[502,"PROVIDER_AUTHENTICATION_FAILED"],TRAIN_NOT_FOUND:[404,"TRAIN_NOT_FOUND"],RATE_LIMITED:[429,"PROVIDER_RATE_LIMITED"],UNAVAILABLE:[503,"PROVIDER_UNAVAILABLE"],MALFORMED_RESPONSE:[502,"MALFORMED_PROVIDER_RESPONSE"]} as const;const [status,code]=x[e.code];return res.status(status).json({error:{code,message:code==="TRAIN_NOT_FOUND"?"The requested train could not be found.":"Railway data is currently unavailable."}})}const x=e as ApiError;res.status(x.status??500).json({error:{code:x.code??"INTERNAL_ERROR",message:x.message??"Unexpected error."}})}}
+import {
+  ApiError,
+  TrainService,
+} from "../../../src/train-service.js";
+
+function json(
+  body: unknown,
+  status = 200
+): Response {
+  return Response.json(body, { status });
+}
+
+function errorResponse(
+  error: unknown
+): Response {
+  if (error instanceof ApiError) {
+    return json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      },
+      error.status
+    );
+  }
+
+  console.error(error);
+
+  return json(
+    {
+      error: {
+        code: "INTERNAL_ERROR",
+        message:
+          "An unexpected error occurred.",
+      },
+    },
+    500
+  );
+}
+
+export async function GET(
+  request: Request,
+  context: {
+    params: Promise<{ number: string }>;
+  }
+): Promise<Response> {
+  try {
+    const { number } =
+      await context.params;
+
+    const url = new URL(request.url);
+
+    const date =
+      url.searchParams.get("date") ?? "";
+
+    const trainService =
+      new TrainService();
+
+    const liveStatus =
+      await trainService.live(
+        number,
+        date
+      );
+
+    return json(liveStatus);
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
