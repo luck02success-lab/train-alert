@@ -34,6 +34,17 @@ export class AlertWorker {
           alert.id,
           error
         );
+
+        try {
+          await this.repository
+            .releaseAlert(alert.id);
+        } catch (releaseError) {
+          console.error(
+            "Failed to release alert",
+            alert.id,
+            releaseError
+          );
+        }
       }
     }
 

@@ -51,7 +51,7 @@ export interface NotificationRepository {
 
   markSending(
     deliveryId: string
-  ): Promise<boolean>;
+  ): Promise<number | null>;
 
   markSent(
     deliveryId: string
@@ -66,6 +66,10 @@ export interface NotificationRepository {
 
   invalidateDevice(
     deviceId: string
+  ): Promise<void>;
+
+  releaseAlert(
+    alertId: number
   ): Promise<void>;
 }
 
@@ -199,11 +203,19 @@ export class PostgresNotificationRepository
           device_id
         )
         VALUES ($1, $2)
+
         ON CONFLICT (
           alert_id,
           device_id
         )
-        DO NOTHING
+        DO UPDATE
+        SET
+          updated_at =
+            notification_deliveries.updated_at
+
+        WHERE notification_deliveries.state
+          IN ('pending', 'failed')
+
         RETURNING
           id,
           alert_id AS "alertId",
@@ -225,9 +237,11 @@ export class PostgresNotificationRepository
 
   async markSending(
     deliveryId: string
-  ): Promise<boolean> {
+  ): Promise<number | null> {
     const result =
-      await this.db.query(
+      await this.db.query<{
+        attemptCount: number;
+      }>(
         `
         UPDATE notification_deliveries
         SET
@@ -238,12 +252,16 @@ export class PostgresNotificationRepository
         WHERE id = $1
           AND state IN ('pending', 'failed')
           AND next_attempt_at <= now()
-        RETURNING id
+        RETURNING
+          attempt_count AS "attemptCount"
         `,
         [deliveryId]
       );
 
-    return result.rows.length > 0;
+    return (
+      result.rows[0]?.attemptCount ??
+      null
+    );
   }
 
   async markSent(
@@ -299,6 +317,21 @@ export class PostgresNotificationRepository
         AND invalidated_at IS NULL
       `,
       [deviceId]
+    );
+  }
+
+  async releaseAlert(
+    alertId: number
+  ): Promise<void> {
+    await this.db.query(
+      `
+      UPDATE alerts
+      SET
+        state = 'pending'
+      WHERE id = $1
+        AND state = 'sending'
+      `,
+      [alertId]
     );
   }
 }

@@ -78,7 +78,6 @@ export class NotificationService {
           );
 
       if (!delivery) {
-        // Already created by another worker.
         continue;
       }
 
@@ -97,11 +96,11 @@ export class NotificationService {
     token: string,
     alert: DueAlert
   ): Promise<void> {
-    const claimed =
+    const attempt =
       await this.repository
         .markSending(deliveryId);
 
-    if (!claimed) {
+    if (attempt === null) {
       return;
     }
 
@@ -142,12 +141,7 @@ export class NotificationService {
       return;
     }
 
-    const attempt =
-      await this.getNextAttempt(
-        deliveryId
-      );
-
-    if (attempt > MAX_ATTEMPTS) {
+    if (attempt >= MAX_ATTEMPTS) {
       await this.repository
         .markFailed(
           deliveryId,
@@ -202,14 +196,5 @@ export class NotificationService {
           String(offset),
       },
     };
-  }
-
-  private async getNextAttempt(
-    _deliveryId: string
-  ): Promise<number> {
-    // The current repository contract does not
-    // expose the attempt count after claiming.
-    // The first retry is therefore attempt #2.
-    return 2;
   }
 }
