@@ -34,6 +34,22 @@ export class AlertWorker {
           alert.id,
           error
         );
+
+        /*
+         * Never leave an alert permanently stuck
+         * in "sending" because of an unexpected
+         * application error.
+         */
+        try {
+          await this.repository
+            .releaseAlert(alert.id);
+        } catch (releaseError) {
+          console.error(
+            "Failed to release alert",
+            alert.id,
+            releaseError
+          );
+        }
       }
     }
 

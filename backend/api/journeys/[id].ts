@@ -61,17 +61,48 @@ function errorResponse(error: unknown) {
     {
       error: {
         code: "INTERNAL_ERROR",
-        message: "An unexpected error occurred.",
+        message:
+          "An unexpected error occurred.",
       },
     },
     500
   );
 }
 
+function getJourneyIdFromRequest(
+  request: Request
+): string {
+  const pathname =
+    new URL(request.url).pathname;
+
+  const segments =
+    pathname.split("/").filter(Boolean);
+
+  return segments.at(-1) ?? "";
+}
+
+async function getJourneyId(
+  request: Request,
+  context?: {
+    params?: Promise<{ id: string }>;
+  }
+): Promise<string> {
+  if (context?.params) {
+    const params =
+      await context.params;
+
+    if (params.id) {
+      return params.id;
+    }
+  }
+
+  return getJourneyIdFromRequest(request);
+}
+
 export async function GET(
   request: Request,
-  context: {
-    params: Promise<{ id: string }>;
+  context?: {
+    params?: Promise<{ id: string }>;
   }
 ): Promise<Response> {
   try {
@@ -85,13 +116,30 @@ export async function GET(
     const { userId } =
       await authenticate(request, auth);
 
-    const { id } = await context.params;
+    const id =
+      await getJourneyId(
+        request,
+        context
+      );
+
+    if (!id) {
+      throw new JourneyServiceError(
+        "INVALID_JOURNEY_ID",
+        "Journey id is required.",
+        400
+      );
+    }
 
     const journey =
-      await journeyService.get(userId, id);
+      await journeyService.get(
+        userId,
+        id
+      );
 
     return json(
-      await journeyService.response(journey)
+      await journeyService.response(
+        journey
+      )
     );
   } catch (error) {
     return errorResponse(error);
@@ -100,8 +148,8 @@ export async function GET(
 
 export async function DELETE(
   request: Request,
-  context: {
-    params: Promise<{ id: string }>;
+  context?: {
+    params?: Promise<{ id: string }>;
   }
 ): Promise<Response> {
   try {
@@ -115,13 +163,30 @@ export async function DELETE(
     const { userId } =
       await authenticate(request, auth);
 
-    const { id } = await context.params;
+    const id =
+      await getJourneyId(
+        request,
+        context
+      );
+
+    if (!id) {
+      throw new JourneyServiceError(
+        "INVALID_JOURNEY_ID",
+        "Journey id is required.",
+        400
+      );
+    }
 
     const journey =
-      await journeyService.cancel(userId, id);
+      await journeyService.cancel(
+        userId,
+        id
+      );
 
     return json(
-      await journeyService.response(journey)
+      await journeyService.response(
+        journey
+      )
     );
   } catch (error) {
     return errorResponse(error);

@@ -14,7 +14,9 @@ async function authenticate(
 ) {
   try {
     const { auth } =
-      await import("../../src/api-runtime.js");
+      await import(
+        "../../src/api-runtime.js"
+      );
 
     return await auth.authenticate({
       headers: Object.fromEntries(
@@ -61,18 +63,59 @@ function errorResponse(
   );
 }
 
+function getDeviceIdFromRequest(
+  request: Request
+): string {
+  const pathname =
+    new URL(request.url).pathname;
+
+  const segments =
+    pathname.split("/").filter(Boolean);
+
+  return segments.at(-1) ?? "";
+}
+
+async function getDeviceId(
+  request: Request,
+  context?: {
+    params?: Promise<{ id: string }>;
+  }
+): Promise<string> {
+  if (context?.params) {
+    const params =
+      await context.params;
+
+    if (params.id) {
+      return params.id;
+    }
+  }
+
+  return getDeviceIdFromRequest(request);
+}
+
 export async function DELETE(
   request: Request,
-  context: {
-    params: Promise<{ id: string }>;
+  context?: {
+    params?: Promise<{ id: string }>;
   }
 ): Promise<Response> {
   try {
     const { userId } =
       await authenticate(request);
 
-    const { id } =
-      await context.params;
+    const id =
+      await getDeviceId(
+        request,
+        context
+      );
+
+    if (!id) {
+      throw new DeviceServiceError(
+        "INVALID_DEVICE_ID",
+        "Device id is required.",
+        400
+      );
+    }
 
     const { deviceService } =
       await import(
