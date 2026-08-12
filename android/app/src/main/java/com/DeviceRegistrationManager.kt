@@ -8,28 +8,35 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.util.UUID
 import java.util.concurrent.Executors
 
 object DeviceRegistrationManager {
 
-    private const val TAG = "DeviceRegistration"
+    private const val TAG =
+        "DeviceRegistration"
 
-    private const val PREFS_NAME = "train_alert"
-    private const val USER_ID_KEY = "user_id"
+    private const val PREFS_NAME =
+        "train_alert"
+
+    private const val USER_ID_KEY =
+        "user_id"
 
     private const val API_BASE_URL =
-        "https://train-alert-api.vercel.app"
+        BuildConfig.API_BASE_URL
 
-    private val httpClient = OkHttpClient()
+    private val httpClient =
+        OkHttpClient()
 
     private val executor =
         Executors.newSingleThreadExecutor()
 
     private val jsonMediaType =
-        "application/json; charset=utf-8".toMediaType()
+        "application/json; charset=utf-8"
+            .toMediaType()
 
-    fun registerCurrentToken(context: Context) {
+    fun registerCurrentToken(
+        context: Context
+    ) {
         FirebaseMessaging
             .getInstance()
             .token
@@ -53,64 +60,31 @@ object DeviceRegistrationManager {
         token: String
     ) {
         if (token.isBlank()) {
-            Log.w(TAG, "Ignoring empty FCM token")
+            Log.w(
+                TAG,
+                "Ignoring empty FCM token"
+            )
             return
         }
 
         executor.execute {
             try {
+                val applicationContext =
+                    context.applicationContext
+
                 val userId =
-                    getOrCreateUserId(context)
+                    getOrCreateUserId(
+                        applicationContext
+                    )
 
-                val payload =
-                    JSONObject()
-                        .put("platform", "android")
-                        .put("token", token)
-
-                val request =
-                    Request.Builder()
-                        .url("$API_BASE_URL/api/devices")
-                        .header(
-                            "x-user-id",
-                            userId
-                        )
-                        .header(
-                            "Content-Type",
-                            "application/json"
-                        )
-                        .post(
-                            payload
-                                .toString()
-                                .toRequestBody(
-                                    jsonMediaType
-                                )
-                        )
-                        .build()
-
-                httpClient
-                    .newCall(request)
-                    .execute()
-                    .use { response ->
-
-                        if (!response.isSuccessful) {
-                            Log.e(
-                                TAG,
-                                "Device registration failed: " +
-                                    "${response.code} " +
-                                    response.body?.string()
-                            )
-                            return@use
-                        }
-
-                        Log.i(
-                            TAG,
-                            "FCM device registered successfully"
-                        )
-                    }
+                registerDevice(
+                    userId = userId,
+                    token = token
+                )
             } catch (error: Exception) {
                 Log.e(
                     TAG,
-                    "Device registration request failed",
+                    "Device registration failed",
                     error
                 )
             }
@@ -136,17 +110,131 @@ object DeviceRegistrationManager {
             return existing
         }
 
-        val generated =
-            UUID.randomUUID().toString()
+        val userId =
+            createAnonymousUser()
 
         preferences
             .edit()
             .putString(
                 USER_ID_KEY,
-                generated
+                userId
             )
             .apply()
 
-        return generated
+        Log.i(
+            TAG,
+            "Created anonymous Train Alert user"
+        )
+
+        return userId
+    }
+
+    private fun createAnonymousUser(): String {
+        val request =
+            Request.Builder()
+                .url(
+                    "$API_BASE_URL/api/users"
+                )
+                .post(
+                    ByteArray(0)
+                        .toRequestBody(
+                            null
+                        )
+                )
+                .build()
+
+        httpClient
+            .newCall(request)
+            .execute()
+            .use { response ->
+
+                val body =
+                    response.body
+                        ?.string()
+                        .orEmpty()
+
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        "User creation failed: " +
+                            "${response.code} $body"
+                    )
+                }
+
+                val json =
+                    JSONObject(body)
+
+                val userId =
+                    json.optString("id")
+
+                if (userId.isBlank()) {
+                    throw IllegalStateException(
+                        "User creation response " +
+                            "did not contain an id"
+                    )
+                }
+
+                return userId
+            }
+    }
+
+    private fun registerDevice(
+        userId: String,
+        token: String
+    ) {
+        val payload =
+            JSONObject()
+                .put(
+                    "platform",
+                    "android"
+                )
+                .put(
+                    "token",
+                    token
+                )
+
+        val request =
+            Request.Builder()
+                .url(
+                    "$API_BASE_URL/api/devices"
+                )
+                .header(
+                    "x-user-id",
+                    userId
+                )
+                .header(
+                    "Content-Type",
+                    "application/json"
+                )
+                .post(
+                    payload
+                        .toString()
+                        .toRequestBody(
+                            jsonMediaType
+                        )
+                )
+                .build()
+
+        httpClient
+            .newCall(request)
+            .execute()
+            .use { response ->
+
+                val body =
+                    response.body
+                        ?.string()
+                        .orEmpty()
+
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        "Device registration failed: " +
+                            "${response.code} $body"
+                    )
+                }
+
+                Log.i(
+                    TAG,
+                    "FCM device registered successfully"
+                )
+            }
     }
 }

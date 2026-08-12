@@ -19,7 +19,7 @@ android {
         buildConfigField(
             "String",
             "API_BASE_URL",
-            "\"https://train-alert-api.vercel.app\""
+            "\"https://train-alert-api-git-feature-devi-a92348-himanshucse19s-projects.vercel.app\""
         )
     }
 
