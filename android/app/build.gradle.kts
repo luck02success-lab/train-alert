@@ -17,10 +17,10 @@ android {
         versionName = "0.1.0"
 
         buildConfigField(
-            "String",
-            "API_BASE_URL",
-            "\"https://train-alert-api-git-feature-devi-a92348-himanshucse19s-projects.vercel.app\""
-        )
+    "String",
+    "API_BASE_URL",
+    "\"https://train-alert-api.vercel.app\""
+)
     }
 
     compileOptions {
