@@ -8,7 +8,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.util.UUID
 import java.util.concurrent.Executors
 
 object DeviceRegistrationManager {
@@ -18,8 +17,13 @@ object DeviceRegistrationManager {
     private const val PREFS_NAME = "train_alert"
     private const val USER_ID_KEY = "user_id"
 
-    private const val API_BASE_URL =
-        "https://train-alert-api.vercel.app"
+    /*
+     * API_BASE_URL is defined in android/app/build.gradle.kts
+     *
+     * For now it should point to the feature deployment:
+     *
+     * https://train-alert-api-git-feature-devi-a92348-himanshucse19s-projects.vercel.app
+     */
 
     private val httpClient = OkHttpClient()
 
@@ -28,6 +32,32 @@ object DeviceRegistrationManager {
 
     private val jsonMediaType =
         "application/json; charset=utf-8".toMediaType()
+
+    fun ensureUser(
+    context: Context,
+    onSuccess: (String) -> Unit,
+    onError: (String) -> Unit
+) {
+    executor.execute {
+        try {
+            val userId = getOrCreateUserId(context)
+
+            onSuccess(userId)
+        } catch (error: Exception) {
+            Log.e(
+                TAG,
+                "Unable to create/retrieve user",
+                error
+            )
+
+            onError(
+                error.message
+                    ?: "Unable to initialize user"
+            )
+        }
+    }
+}
+    
 
     fun registerCurrentToken(context: Context) {
         FirebaseMessaging
@@ -48,6 +78,7 @@ object DeviceRegistrationManager {
             }
     }
 
+
     fun registerToken(
         context: Context,
         token: String
@@ -62,6 +93,11 @@ object DeviceRegistrationManager {
                 val userId =
                     getOrCreateUserId(context)
 
+                Log.i(
+                    TAG,
+                    "Registering FCM device for user: $userId"
+                )
+
                 val payload =
                     JSONObject()
                         .put("platform", "android")
@@ -69,7 +105,9 @@ object DeviceRegistrationManager {
 
                 val request =
                     Request.Builder()
-                        .url("$API_BASE_URL/api/devices")
+                        .url(
+                            "${BuildConfig.API_BASE_URL}/api/devices"
+                        )
                         .header(
                             "x-user-id",
                             userId
@@ -92,12 +130,14 @@ object DeviceRegistrationManager {
                     .execute()
                     .use { response ->
 
+                        val body =
+                            response.body?.string()
+
                         if (!response.isSuccessful) {
                             Log.e(
                                 TAG,
                                 "Device registration failed: " +
-                                    "${response.code} " +
-                                    response.body?.string()
+                                    "${response.code} $body"
                             )
                             return@use
                         }
@@ -107,6 +147,7 @@ object DeviceRegistrationManager {
                             "FCM device registered successfully"
                         )
                     }
+
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -120,6 +161,7 @@ object DeviceRegistrationManager {
     private fun getOrCreateUserId(
         context: Context
     ): String {
+
         val preferences =
             context.getSharedPreferences(
                 PREFS_NAME,
@@ -133,20 +175,92 @@ object DeviceRegistrationManager {
             )
 
         if (!existing.isNullOrBlank()) {
+            Log.d(
+                TAG,
+                "Using existing Train Alert user: $existing"
+            )
+
             return existing
         }
 
-        val generated =
-            UUID.randomUUID().toString()
+        /*
+         * No user exists locally.
+         *
+         * Create an anonymous Train Alert user
+         * through POST /api/users.
+         */
+        val userId =
+            createAnonymousUser()
 
         preferences
             .edit()
             .putString(
                 USER_ID_KEY,
-                generated
+                userId
             )
             .apply()
 
-        return generated
+        Log.i(
+            TAG,
+            "Created anonymous Train Alert user"
+        )
+
+        return userId
+    }
+
+    private fun createAnonymousUser(): String {
+
+        val request =
+            Request.Builder()
+                .url(
+                    "${BuildConfig.API_BASE_URL}/api/users"
+                )
+                .header(
+                    "Content-Type",
+                    "application/json"
+                )
+                .post(
+                    "{}"
+                        .toRequestBody(
+                            jsonMediaType
+                        )
+                )
+                .build()
+
+        httpClient
+            .newCall(request)
+            .execute()
+            .use { response ->
+
+                val body =
+                    response.body?.string()
+
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        "User creation failed: " +
+                            "${response.code} $body"
+                    )
+                }
+
+                if (body.isNullOrBlank()) {
+                    throw IllegalStateException(
+                        "User creation returned an empty response"
+                    )
+                }
+
+                val json =
+                    JSONObject(body)
+
+                val userId =
+                    json.optString("id")
+
+                if (userId.isBlank()) {
+                    throw IllegalStateException(
+                        "User creation response did not contain an id"
+                    )
+                }
+
+                return userId
+            }
     }
 }

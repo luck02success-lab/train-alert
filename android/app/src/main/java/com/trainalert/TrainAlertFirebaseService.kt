@@ -119,7 +119,7 @@ class TrainAlertFirebaseService : FirebaseMessagingService() {
             "TrainAlertFCM"
 
         private const val BASE_URL =
-            "https://train-alert-api.vercel.app/api"
+            "https://train-alert-api-git-feature-devi-a92348-himanshucse19s-projects.vercel.app/api"
 
         private val JSON_MEDIA_TYPE =
             "application/json; charset=utf-8"
