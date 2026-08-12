@@ -92,11 +92,11 @@ export default async function handler(
       });
 
       results.push({
-        deviceId: device.id,
-        success: result.success,
-        errorCode:
-          result.errorCode ?? null,
-      });
+  deviceId: device.id,
+  success: result.success,
+  errorCode: result.errorCode ?? null,
+  errorMessage: result.errorMessage ?? null,
+});
     }
 
     const successful =
