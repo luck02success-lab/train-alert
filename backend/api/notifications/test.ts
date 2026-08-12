@@ -78,18 +78,17 @@ export default async function handler(
 
     for (const device of activeDevices) {
       const result = await fcm.send({
-        token: device.token,
+  token: device.fcmToken,
 
-        title: "Train Alert Test",
+  title: "Train Alert Test",
 
-        body:
-          "FCM notification is working correctly! 🚆",
+  body: "FCM notification is working correctly! 🚆",
 
-        data: {
-          type: "test_notification",
-          deviceId: device.id,
-        },
-      });
+  data: {
+    type: "test_notification",
+    deviceId: device.id,
+  },
+});
 
       results.push({
   deviceId: device.id,
