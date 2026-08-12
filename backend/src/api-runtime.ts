@@ -36,6 +36,14 @@ import { JourneyService } from "./journey-service.js";
 
 import { DeviceService } from "./device-service.js";
 
+import {
+  PostgresUserRepository,
+} from "./user-repository.js";
+
+import {
+  UserService,
+} from "./user-service.js";
+
 const database = new PostgresDatabase();
 
 const journeyRepository =
@@ -43,6 +51,14 @@ const journeyRepository =
 
 const deviceRepository =
   new PostgresDeviceRepository(database);
+
+const userRepository =
+  new PostgresUserRepository(database);
+
+export const userService =
+  new UserService(
+    userRepository
+  );
 
 const provider =
   new RailRadarProvider();
