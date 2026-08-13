@@ -7,3 +7,13 @@ dist/
 build/
 local.properties
 *.keystore
+
+# Android release signing
+*.jks
+*.keystore
+
+# Android / JVM crash dumps
+*.hprof
+
+# Local Android configuration
+local.properties

@@ -22,7 +22,7 @@ function retryAt(
 ): Date {
   const index =
     Math.min(
-      attempt - 1,
+      Math.max(attempt - 1, 0),
       RETRY_DELAYS_MS.length - 1
     );
 
@@ -65,10 +65,6 @@ export class NotificationService {
       await this.repository
         .getDevicesForAlert(alert.id);
 
-    /*
-     * There are no active devices for this journey.
-     * The alert has nothing left to deliver.
-     */
     if (devices.length === 0) {
       await this.repository
         .markAlertSent(alert.id);
@@ -84,12 +80,11 @@ export class NotificationService {
             device.id
           );
 
-      /*
-       * A null delivery means another worker already
-       * owns a sending delivery or the notification
-       * has already been successfully sent.
-       */
       if (!delivery) {
+        /*
+         * The delivery is already sent or currently
+         * being processed by another worker.
+         */
         continue;
       }
 
@@ -101,21 +96,21 @@ export class NotificationService {
       );
     }
 
-    /*
-     * Decide whether this alert is finished.
-     *
-     * failed deliveries remain retryable until the
-     * next_attempt_at time. The worker will pick the
-     * alert up again when that time arrives.
-     */
     const summary =
       await this.repository
         .getDeliverySummary(alert.id);
 
+    /*
+     * The alert is complete when there are no deliveries
+     * waiting to be sent and no retryable failures.
+     *
+     * Terminal failures (invalid token / max attempts)
+     * do not keep the alert alive forever.
+     */
     if (
       summary.pending === 0 &&
       summary.sending === 0 &&
-      summary.failed === 0
+      summary.retryableFailed === 0
     ) {
       await this.repository
         .markAlertSent(alert.id);
@@ -160,7 +155,8 @@ export class NotificationService {
 
       result = {
         success: false,
-        errorCode: "FCM_CLIENT_ERROR",
+        errorCode:
+          "FCM_CLIENT_ERROR",
         errorMessage:
           error instanceof Error
             ? error.message
@@ -184,13 +180,12 @@ export class NotificationService {
         .invalidateDevice(deviceId);
 
       await this.repository
-        .markFailed(
+        .markPermanentlyFailed(
           deliveryId,
           result.errorCode ??
             "INVALID_TOKEN",
           result.errorMessage ??
-            "Device token is invalid.",
-          new Date()
+            "Device token is invalid."
         );
 
       return;
@@ -198,13 +193,12 @@ export class NotificationService {
 
     if (attempt >= MAX_ATTEMPTS) {
       await this.repository
-        .markFailed(
+        .markPermanentlyFailed(
           deliveryId,
           result.errorCode ??
             "FCM_SEND_FAILED",
           result.errorMessage ??
-            "FCM notification failed.",
-          new Date()
+            "FCM notification failed."
         );
 
       return;
@@ -240,6 +234,7 @@ export class NotificationService {
     return {
       title,
       body,
+
       data: {
         type:
           "journey_alert",

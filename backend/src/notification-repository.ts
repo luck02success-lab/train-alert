@@ -9,7 +9,7 @@ export type NotificationDeliveryState =
   | "failed";
 
 export interface DueAlert {
-  id: number;
+  id: string;
   journeyId: string;
   offsetMinutes: number;
   scheduledFor: Date;
@@ -28,7 +28,7 @@ export interface NotificationDevice {
 
 export interface NotificationDelivery {
   id: string;
-  alertId: number;
+  alertId: string;
   deviceId: string;
   state: NotificationDeliveryState;
   attemptCount: number;
@@ -38,7 +38,7 @@ export interface NotificationDelivery {
 export interface NotificationDeliverySummary {
   pending: number;
   sending: number;
-  failed: number;
+  retryableFailed: number;
 }
 
 export interface NotificationRepository {
@@ -47,11 +47,11 @@ export interface NotificationRepository {
   ): Promise<DueAlert[]>;
 
   getDevicesForAlert(
-    alertId: number
+    alertId: string
   ): Promise<NotificationDevice[]>;
 
   createDelivery(
-    alertId: number,
+    alertId: string,
     deviceId: string
   ): Promise<NotificationDelivery | null>;
 
@@ -70,25 +70,31 @@ export interface NotificationRepository {
     nextAttemptAt: Date
   ): Promise<void>;
 
+  markPermanentlyFailed(
+    deliveryId: string,
+    errorCode: string,
+    errorMessage: string
+  ): Promise<void>;
+
   invalidateDevice(
     deviceId: string
   ): Promise<void>;
 
   getDeliverySummary(
-    alertId: number
+    alertId: string
   ): Promise<NotificationDeliverySummary>;
 
   markAlertSent(
-    alertId: number
+    alertId: string
   ): Promise<void>;
 
   releaseAlert(
-    alertId: number
+    alertId: string
   ): Promise<void>;
 }
 
 type AlertRow = {
-  id: number;
+  id: string;
   journeyId: string;
   offsetMinutes: number;
   scheduledFor: Date;
@@ -105,7 +111,7 @@ type DeviceRow = {
 
 type DeliveryRow = {
   id: string;
-  alertId: number;
+  alertId: string;
   deviceId: string;
   state: NotificationDeliveryState;
   attemptCount: number;
@@ -124,35 +130,37 @@ export class PostgresNotificationRepository
   ): Promise<DueAlert[]> {
     /*
      * Recover deliveries that were left in "sending"
-     * by a crashed worker.
-     *
-     * A delivery stuck in "sending" for more than
-     * five minutes is safe to retry.
+     * because a worker crashed or timed out.
      */
     await this.db.query(
-  `
-  UPDATE notification_deliveries
-  SET
-    state = 'failed',
-    next_attempt_at = now(),
-    last_error_code = 'WORKER_TIMEOUT',
-    last_error_message =
-      'Previous notification worker timed out.',
-    updated_at = now()
-  WHERE state = 'sending'
-    AND updated_at <= now() - interval '5 minutes'
-  `,
-  []
-);
+      `
+      UPDATE notification_deliveries
+      SET
+        state = 'failed',
+        next_attempt_at = now(),
+        last_error_code = 'WORKER_TIMEOUT',
+        last_error_message =
+          'Previous notification worker timed out.',
+        updated_at = now()
+      WHERE state = 'sending'
+        AND updated_at <=
+          now() - interval '5 minutes'
+      `,
+      []
+    );
 
+    /*
+     * Use EXISTS rather than joining notification_deliveries
+     * directly. This prevents duplicate alert rows and allows
+     * FOR UPDATE SKIP LOCKED to operate safely on alerts.
+     */
     const result =
       await this.db.query<AlertRow>(
         `
         WITH candidates AS (
-          SELECT DISTINCT a.id
+          SELECT
+            a.id
           FROM alerts a
-          LEFT JOIN notification_deliveries d
-            ON d.alert_id = a.id
           WHERE
             (
               a.state = 'pending'
@@ -161,11 +169,20 @@ export class PostgresNotificationRepository
             OR
             (
               a.state = 'sending'
-              AND d.state IN ('pending', 'failed')
-              AND d.next_attempt_at <= now()
+              AND EXISTS (
+                SELECT 1
+                FROM notification_deliveries d
+                WHERE d.alert_id = a.id
+                  AND d.state IN (
+                    'pending',
+                    'failed'
+                  )
+                  AND d.next_attempt_at <= now()
+              )
             )
-          ORDER BY a.scheduled_for ASC
-          FOR UPDATE OF a SKIP LOCKED
+          ORDER BY
+            a.scheduled_for ASC
+          FOR UPDATE SKIP LOCKED
           LIMIT $1
         )
         UPDATE alerts a
@@ -204,18 +221,22 @@ export class PostgresNotificationRepository
       (row) => ({
         id: row.id,
         journeyId: row.journeyId,
-        offsetMinutes: row.offsetMinutes,
-        scheduledFor: row.scheduledFor,
-        trainNumber: row.trainNumber,
+        offsetMinutes:
+          row.offsetMinutes,
+        scheduledFor:
+          row.scheduledFor,
+        trainNumber:
+          row.trainNumber,
         destinationStationName:
           row.destinationStationName,
-        currentEta: row.currentEta,
+        currentEta:
+          row.currentEta,
       })
     );
   }
 
   async getDevicesForAlert(
-    alertId: number
+    alertId: string
   ): Promise<NotificationDevice[]> {
     const result =
       await this.db.query<DeviceRow>(
@@ -239,7 +260,7 @@ export class PostgresNotificationRepository
   }
 
   async createDelivery(
-    alertId: number,
+    alertId: string,
     deviceId: string
   ): Promise<NotificationDelivery | null> {
     const result =
@@ -295,7 +316,10 @@ export class PostgresNotificationRepository
             attempt_count + 1,
           updated_at = now()
         WHERE id = $1
-          AND state IN ('pending', 'failed')
+          AND state IN (
+            'pending',
+            'failed'
+          )
           AND next_attempt_at <= now()
         RETURNING
           attempt_count AS "attemptCount"
@@ -351,13 +375,44 @@ export class PostgresNotificationRepository
     );
   }
 
+  async markPermanentlyFailed(
+    deliveryId: string,
+    errorCode: string,
+    errorMessage: string
+  ): Promise<void> {
+    /*
+     * attempt_count = 5 deliberately marks this delivery
+     * as terminal. The summary query treats attempts below
+     * five as retryable.
+     */
+    await this.db.query(
+      `
+      UPDATE notification_deliveries
+      SET
+        state = 'failed',
+        attempt_count = 5,
+        last_error_code = $2,
+        last_error_message = $3,
+        next_attempt_at = now(),
+        updated_at = now()
+      WHERE id = $1
+      `,
+      [
+        deliveryId,
+        errorCode,
+        errorMessage,
+      ]
+    );
+  }
+
   async invalidateDevice(
     deviceId: string
   ): Promise<void> {
     await this.db.query(
       `
       UPDATE devices
-      SET invalidated_at = now()
+      SET
+        invalidated_at = now()
       WHERE id = $1
         AND invalidated_at IS NULL
       `,
@@ -366,13 +421,13 @@ export class PostgresNotificationRepository
   }
 
   async getDeliverySummary(
-    alertId: number
+    alertId: string
   ): Promise<NotificationDeliverySummary> {
     const result =
       await this.db.query<{
         pending: number;
         sending: number;
-        failed: number;
+        retryableFailed: number;
       }>(
         `
         SELECT
@@ -385,8 +440,11 @@ export class PostgresNotificationRepository
           )::int AS sending,
 
           COUNT(*) FILTER (
-            WHERE state = 'failed'
-          )::int AS failed
+            WHERE
+              state = 'failed'
+              AND attempt_count < 5
+          )::int AS "retryableFailed"
+
         FROM notification_deliveries
         WHERE alert_id = $1
         `,
@@ -396,14 +454,19 @@ export class PostgresNotificationRepository
     const row = result.rows[0];
 
     return {
-      pending: row?.pending ?? 0,
-      sending: row?.sending ?? 0,
-      failed: row?.failed ?? 0,
+      pending:
+        row?.pending ?? 0,
+
+      sending:
+        row?.sending ?? 0,
+
+      retryableFailed:
+        row?.retryableFailed ?? 0,
     };
   }
 
   async markAlertSent(
-    alertId: number
+    alertId: string
   ): Promise<void> {
     await this.db.query(
       `
@@ -418,7 +481,7 @@ export class PostgresNotificationRepository
   }
 
   async releaseAlert(
-    alertId: number
+    alertId: string
   ): Promise<void> {
     await this.db.query(
       `

@@ -11,7 +11,10 @@
 
     <application
         android:theme="@style/Theme.TrainAlert"
-        android:label="Train Alert">
+        android:label="Train Alert"
+        android:icon="@drawable/ic_train_alert_launcher"
+        android:allowBackup="false"
+        android:supportsRtl="true">
 
         <activity
             android:name=".MainActivity"
@@ -24,6 +27,17 @@
 
                 <category
                     android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+                <action
+                    android:name="com.trainalert.OPEN_JOURNEY" />
+
+                <category
+                    android:name="android.intent.category.DEFAULT" />
+
+                <category
+                    android:name="android.intent.category.BROWSABLE" />
             </intent-filter>
 
         </activity>

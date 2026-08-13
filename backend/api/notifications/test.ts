@@ -1,11 +1,26 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type {
+  VercelRequest,
+  VercelResponse,
+} from "@vercel/node";
 
-import { deviceService } from "../../src/api-runtime.js";
-import { FirebaseFcmClient } from "../../src/fcm-firebase.js";
+import {
+  deviceService,
+} from "../../src/api-runtime.js";
 
-const CRON_SECRET = process.env.CRON_SECRET;
+import {
+  FirebaseFcmClient,
+} from "../../src/fcm-firebase.js";
 
-function isAuthorized(req: VercelRequest): boolean {
+const CRON_SECRET =
+  process.env.CRON_SECRET;
+
+const TEST_NOTIFICATIONS_ENABLED =
+  process.env.ENABLE_TEST_NOTIFICATIONS ===
+  "true";
+
+function isAuthorized(
+  req: VercelRequest
+): boolean {
   if (!CRON_SECRET) {
     return false;
   }
@@ -20,6 +35,15 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
+  if (!TEST_NOTIFICATIONS_ENABLED) {
+    return res.status(404).json({
+      error: {
+        code: "NOT_FOUND",
+        message: "Not found.",
+      },
+    });
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({
       error: {
@@ -33,7 +57,8 @@ export default async function handler(
     return res.status(401).json({
       error: {
         code: "UNAUTHORIZED",
-        message: "Invalid or missing authorization.",
+        message:
+          "Invalid or missing authorization.",
       },
     });
   }
@@ -72,40 +97,58 @@ export default async function handler(
       });
     }
 
-    const fcm = new FirebaseFcmClient();
+    const fcm =
+      new FirebaseFcmClient();
 
     const results = [];
 
     for (const device of activeDevices) {
-      const result = await fcm.send({
-  token: device.fcmToken,
+      const result =
+        await fcm.send({
+          token: device.fcmToken,
 
-  title: "Train Alert Test",
+          title:
+            "Train Alert Test",
 
-  body: "FCM notification is working correctly! 🚆",
+          body:
+            "FCM notification is working correctly! 🚆",
 
-  data: {
-    type: "test_notification",
-    deviceId: device.id,
-  },
-});
+          data: {
+            type:
+              "test_notification",
+
+            deviceId:
+              device.id,
+          },
+        });
 
       results.push({
-  deviceId: device.id,
-  success: result.success,
-  errorCode: result.errorCode ?? null,
-  errorMessage: result.errorMessage ?? null,
-});
+        deviceId:
+          device.id,
+
+        success:
+          result.success,
+
+        errorCode:
+          result.errorCode ??
+          null,
+
+        errorMessage:
+          result.errorMessage ??
+          null,
+      });
     }
 
     const successful =
       results.filter(
-        (result) => result.success
+        (result) =>
+          result.success
       ).length;
 
     return res.status(200).json({
       status: "ok",
-      devices: results.length,
+      devices:
+        results.length,
       successful,
       results,
     });
