@@ -27,11 +27,23 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+
+            buildConfigField(
+                "String",
+                "API_BASE_URL",
+                "\"https://train-alert-api.vercel.app\""
+            )
         }
 
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+
+            buildConfigField(
+                "String",
+                "API_BASE_URL",
+                "\"https://train-alert-api.vercel.app\""
+            )
 
             proguardFiles(
                 getDefaultProguardFile(
@@ -105,14 +117,10 @@ dependencies {
     )
 
     implementation(
-        "com.google.firebase:firebase-messaging"
+        "com.google.firebase:firebase-auth"
     )
 
     implementation(
-    "com.google.firebase:firebase-auth"
-)
-
-implementation(
-    "com.google.firebase:firebase-messaging"
-)
+        "com.google.firebase:firebase-messaging"
+    )
 }
