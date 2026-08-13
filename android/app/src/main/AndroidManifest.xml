@@ -22,14 +22,17 @@
             android:launchMode="singleTop">
 
             <intent-filter>
+
                 <action
                     android:name="android.intent.action.MAIN" />
 
                 <category
                     android:name="android.intent.category.LAUNCHER" />
+
             </intent-filter>
 
             <intent-filter>
+
                 <action
                     android:name="com.trainalert.OPEN_JOURNEY" />
 
@@ -38,6 +41,7 @@
 
                 <category
                     android:name="android.intent.category.BROWSABLE" />
+
             </intent-filter>
 
         </activity>
@@ -47,11 +51,17 @@
             android:exported="false">
 
             <intent-filter>
+
                 <action
                     android:name="com.google.firebase.MESSAGING_EVENT" />
+
             </intent-filter>
 
         </service>
+
+        <receiver
+            android:name=".notification.NotificationDismissReceiver"
+            android:exported="false" />
 
     </application>
 
