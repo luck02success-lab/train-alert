@@ -34,8 +34,13 @@ object JourneyApi {
     private const val TAG =
         "JourneyApi"
 
+    private const val MAX_AUTH_RETRIES =
+        1
+
     private val mainHandler =
-        Handler(Looper.getMainLooper())
+        Handler(
+            Looper.getMainLooper()
+        )
 
     private val client =
         OkHttpClient.Builder()
@@ -67,57 +72,41 @@ object JourneyApi {
     ) {
         executor.execute {
             try {
-                val idToken =
-                    FirebaseAuthManager
-                        .getIdToken()
-
-                val request =
-                    Request.Builder()
-                        .url(
-                            "${BuildConfig.API_BASE_URL}/api/journeys"
+                val response =
+                    executeAuthenticatedRequest(
+                        createGetRequest(
+                            "/api/journeys"
                         )
-                        .header(
-                            "Authorization",
-                            "Bearer $idToken"
+                    )
+
+                response.use {
+                    val body =
+                        it.body
+                            ?.string()
+                            .orEmpty()
+
+                    if (!it.isSuccessful) {
+                        postError(
+                            onError,
+                            parseErrorMessage(
+                                body,
+                                it.code,
+                                "Unable to load journeys"
+                            )
                         )
-                        .get()
-                        .build()
 
-                client.newCall(request)
-                    .execute()
-                    .use { response ->
-
-                        val body =
-                            response.body
-                                ?.string()
-                                .orEmpty()
-
-                        if (!response.isSuccessful) {
-                            Log.e(
-                                TAG,
-                                "List journeys failed: " +
-                                    "${response.code}"
-                            )
-
-                            postError(
-                                onError,
-                                parseErrorMessage(
-                                    body,
-                                    response.code,
-                                    "Unable to load journeys"
-                                )
-                            )
-
-                            return@use
-                        }
-
-                        val journeys =
-                            parseJourneyList(body)
-
-                        mainHandler.post {
-                            onSuccess(journeys)
-                        }
+                        return@use
                     }
+
+                    val journeys =
+                        parseJourneyList(body)
+
+                    mainHandler.post {
+                        onSuccess(
+                            journeys
+                        )
+                    }
+                }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -144,59 +133,43 @@ object JourneyApi {
     ) {
         executor.execute {
             try {
-                val idToken =
-                    FirebaseAuthManager
-                        .getIdToken()
-
-                val request =
-                    Request.Builder()
-                        .url(
-                            "${BuildConfig.API_BASE_URL}/api/journeys/$journeyId"
+                val response =
+                    executeAuthenticatedRequest(
+                        createGetRequest(
+                            "/api/journeys/$journeyId"
                         )
-                        .header(
-                            "Authorization",
-                            "Bearer $idToken"
+                    )
+
+                response.use {
+                    val body =
+                        it.body
+                            ?.string()
+                            .orEmpty()
+
+                    if (!it.isSuccessful) {
+                        postError(
+                            onError,
+                            parseErrorMessage(
+                                body,
+                                it.code,
+                                "Unable to load journey"
+                            )
                         )
-                        .get()
-                        .build()
 
-                client.newCall(request)
-                    .execute()
-                    .use { response ->
-
-                        val body =
-                            response.body
-                                ?.string()
-                                .orEmpty()
-
-                        if (!response.isSuccessful) {
-                            Log.e(
-                                TAG,
-                                "Get journey failed: " +
-                                    "${response.code}"
-                            )
-
-                            postError(
-                                onError,
-                                parseErrorMessage(
-                                    body,
-                                    response.code,
-                                    "Unable to load journey"
-                                )
-                            )
-
-                            return@use
-                        }
-
-                        val journey =
-                            parseJourney(
-                                JSONObject(body)
-                            )
-
-                        mainHandler.post {
-                            onSuccess(journey)
-                        }
+                        return@use
                     }
+
+                    val journey =
+                        parseJourney(
+                            JSONObject(body)
+                        )
+
+                    mainHandler.post {
+                        onSuccess(
+                            journey
+                        )
+                    }
+                }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -225,10 +198,6 @@ object JourneyApi {
     ) {
         executor.execute {
             try {
-                val idToken =
-                    FirebaseAuthManager
-                        .getIdToken()
-
                 val payload =
                     JSONObject()
                         .put(
@@ -245,65 +214,45 @@ object JourneyApi {
                                 .uppercase()
                         )
 
-                val request =
-                    Request.Builder()
-                        .url(
-                            "${BuildConfig.API_BASE_URL}/api/journeys"
+                val response =
+                    executeAuthenticatedRequest(
+                        createJsonRequest(
+                            method = "POST",
+                            path = "/api/journeys",
+                            payload = payload
                         )
-                        .header(
-                            "Authorization",
-                            "Bearer $idToken"
-                        )
-                        .header(
-                            "Content-Type",
-                            "application/json"
-                        )
-                        .post(
-                            payload
-                                .toString()
-                                .toRequestBody(
-                                    jsonMediaType
-                                )
-                        )
-                        .build()
+                    )
 
-                client.newCall(request)
-                    .execute()
-                    .use { response ->
+                response.use {
+                    val body =
+                        it.body
+                            ?.string()
+                            .orEmpty()
 
-                        val body =
-                            response.body
-                                ?.string()
-                                .orEmpty()
-
-                        if (!response.isSuccessful) {
-                            Log.e(
-                                TAG,
-                                "Create journey failed: " +
-                                    "${response.code}"
+                    if (!it.isSuccessful) {
+                        postError(
+                            onError,
+                            parseErrorMessage(
+                                body,
+                                it.code,
+                                "Unable to create journey"
                             )
+                        )
 
-                            postError(
-                                onError,
-                                parseErrorMessage(
-                                    body,
-                                    response.code,
-                                    "Unable to create journey"
-                                )
-                            )
-
-                            return@use
-                        }
-
-                        val journey =
-                            parseJourney(
-                                JSONObject(body)
-                            )
-
-                        mainHandler.post {
-                            onSuccess(journey)
-                        }
+                        return@use
                     }
+
+                    val journey =
+                        parseJourney(
+                            JSONObject(body)
+                        )
+
+                    mainHandler.post {
+                        onSuccess(
+                            journey
+                        )
+                    }
+                }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -330,59 +279,43 @@ object JourneyApi {
     ) {
         executor.execute {
             try {
-                val idToken =
-                    FirebaseAuthManager
-                        .getIdToken()
-
-                val request =
-                    Request.Builder()
-                        .url(
-                            "${BuildConfig.API_BASE_URL}/api/journeys/$journeyId"
+                val response =
+                    executeAuthenticatedRequest(
+                        createDeleteRequest(
+                            "/api/journeys/$journeyId"
                         )
-                        .header(
-                            "Authorization",
-                            "Bearer $idToken"
+                    )
+
+                response.use {
+                    val body =
+                        it.body
+                            ?.string()
+                            .orEmpty()
+
+                    if (!it.isSuccessful) {
+                        postError(
+                            onError,
+                            parseErrorMessage(
+                                body,
+                                it.code,
+                                "Unable to cancel journey"
+                            )
                         )
-                        .delete()
-                        .build()
 
-                client.newCall(request)
-                    .execute()
-                    .use { response ->
-
-                        val body =
-                            response.body
-                                ?.string()
-                                .orEmpty()
-
-                        if (!response.isSuccessful) {
-                            Log.e(
-                                TAG,
-                                "Cancel journey failed: " +
-                                    "${response.code}"
-                            )
-
-                            postError(
-                                onError,
-                                parseErrorMessage(
-                                    body,
-                                    response.code,
-                                    "Unable to cancel journey"
-                                )
-                            )
-
-                            return@use
-                        }
-
-                        val journey =
-                            parseJourney(
-                                JSONObject(body)
-                            )
-
-                        mainHandler.post {
-                            onSuccess(journey)
-                        }
+                        return@use
                     }
+
+                    val journey =
+                        parseJourney(
+                            JSONObject(body)
+                        )
+
+                    mainHandler.post {
+                        onSuccess(
+                            journey
+                        )
+                    }
+                }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -401,6 +334,116 @@ object JourneyApi {
         }
     }
 
+    private fun executeAuthenticatedRequest(
+        requestFactory:
+            (String) -> Request
+    ): okhttp3.Response {
+
+        var token =
+            FirebaseAuthManager
+                .getIdToken()
+
+        var attempt =
+            0
+
+        while (true) {
+            val request =
+                requestFactory(token)
+
+            val response =
+                client.newCall(
+                    request
+                ).execute()
+
+            if (
+                response.code != 401 ||
+                attempt >= MAX_AUTH_RETRIES
+            ) {
+                return response
+            }
+
+            response.close()
+
+            attempt++
+
+            Log.w(
+                TAG,
+                "API returned 401; refreshing Firebase ID token"
+            )
+
+            token =
+                FirebaseAuthManager
+                    .refreshIdToken()
+        }
+    }
+
+    private fun createGetRequest(
+        path: String
+    ): (String) -> Request {
+        return { token ->
+            Request.Builder()
+                .url(
+                    BuildConfig.API_BASE_URL +
+                        path
+                )
+                .header(
+                    "Authorization",
+                    "Bearer $token"
+                )
+                .get()
+                .build()
+        }
+    }
+
+    private fun createDeleteRequest(
+        path: String
+    ): (String) -> Request {
+        return { token ->
+            Request.Builder()
+                .url(
+                    BuildConfig.API_BASE_URL +
+                        path
+                )
+                .header(
+                    "Authorization",
+                    "Bearer $token"
+                )
+                .delete()
+                .build()
+        }
+    }
+
+    private fun createJsonRequest(
+        method: String,
+        path: String,
+        payload: JSONObject
+    ): (String) -> Request {
+        return { token ->
+            Request.Builder()
+                .url(
+                    BuildConfig.API_BASE_URL +
+                        path
+                )
+                .header(
+                    "Authorization",
+                    "Bearer $token"
+                )
+                .header(
+                    "Content-Type",
+                    "application/json"
+                )
+                .method(
+                    method,
+                    payload
+                        .toString()
+                        .toRequestBody(
+                            jsonMediaType
+                        )
+                )
+                .build()
+        }
+    }
+
     private fun parseJourneyList(
         body: String
     ): List<Journey> {
@@ -415,7 +458,9 @@ object JourneyApi {
         ) {
             journeys.add(
                 parseJourney(
-                    array.getJSONObject(index)
+                    array.getJSONObject(
+                        index
+                    )
                 )
             )
         }
@@ -524,6 +569,9 @@ object JourneyApi {
 
                     409 ->
                         "This journey cannot be changed right now."
+
+                    422 ->
+                        "Please check the journey details and try again."
 
                     in 500..599 ->
                         "The Train Alert service is temporarily unavailable."
