@@ -5,16 +5,45 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+import java.util.Properties
+
+val localProperties =
+    Properties().apply {
+        val file =
+            rootProject.file("local.properties")
+
+        if (file.exists()) {
+            file.inputStream().use {
+                load(it)
+            }
+        }
+    }
+
+fun propertyOrNull(
+    name: String
+): String? {
+    return localProperties
+        .getProperty(name)
+        ?.takeIf {
+            it.isNotBlank()
+        }
+}
+
 android {
     namespace = "com.trainalert"
+
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.trainalert"
+        applicationId =
+            "com.trainalert"
+
         minSdk = 26
+
         targetSdk = 35
 
         versionCode = 1
+
         versionName = "1.0.0"
 
         buildConfigField(
@@ -24,9 +53,58 @@ android {
         )
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFilePath =
+                propertyOrNull(
+                    "TRAIN_ALERT_KEYSTORE_FILE"
+                )
+
+            val storePassword =
+                propertyOrNull(
+                    "TRAIN_ALERT_KEYSTORE_PASSWORD"
+                )
+
+            val keyAlias =
+                propertyOrNull(
+                    "TRAIN_ALERT_KEY_ALIAS"
+                )
+
+            val keyPassword =
+                propertyOrNull(
+                    "TRAIN_ALERT_KEY_PASSWORD"
+                )
+
+            if (
+                storeFilePath != null &&
+                storePassword != null &&
+                keyAlias != null &&
+                keyPassword != null
+            ) {
+                storeFile =
+                    file(storeFilePath)
+
+                this.storePassword =
+                    storePassword
+
+                this.keyAlias =
+                    keyAlias
+
+                this.keyPassword =
+                    keyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
+
+            applicationIdSuffix =
+                ".debug"
+
+            versionNameSuffix =
+                "-debug"
 
             buildConfigField(
                 "String",
@@ -37,7 +115,13 @@ android {
 
         release {
             isMinifyEnabled = true
+
             isShrinkResources = true
+
+            signingConfig =
+                signingConfigs.getByName(
+                    "release"
+                )
 
             buildConfigField(
                 "String",
@@ -123,4 +207,8 @@ dependencies {
     implementation(
         "com.google.firebase:firebase-messaging"
     )
+
+    implementation(
+    "androidx.fragment:fragment-ktx:1.8.6"
+)
 }
