@@ -20,5 +20,10 @@
     "@vercel/node": "^5.9.8",
     "firebase-admin": "^14.2.0",
     "pg": "^8.23.0"
+  },
+  "overrides": {
+    "jwks-rsa": {
+      "jose": "4.15.9"
+    }
   }
 }
