@@ -25,7 +25,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +42,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -1063,16 +1081,31 @@ private fun AddJourneyScreen(
     onCreated: () -> Unit,
     onCancel: () -> Unit
 ) {
-    var trainNumber by remember {
-        mutableStateOf("")
+    var trainQuery by remember { mutableStateOf("") }
+    var trainSuggestions by remember {
+        mutableStateOf<List<TrainSuggestion>>(emptyList())
+    }
+    var selectedTrain by remember {
+        mutableStateOf<TrainSuggestion?>(null)
     }
 
-    var journeyDate by remember {
-        mutableStateOf("")
+    var stationQuery by remember { mutableStateOf("") }
+    var stationSuggestions by remember {
+        mutableStateOf<List<StationSuggestion>>(emptyList())
+    }
+    var selectedStation by remember {
+        mutableStateOf<StationSuggestion?>(null)
     }
 
-    var destination by remember {
-        mutableStateOf("")
+    var journeyDate by remember { mutableStateOf("") }
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    var trainExpanded by remember { mutableStateOf(false) }
+    var stationExpanded by remember { mutableStateOf(false) }
+
+    var trainSearching by remember { mutableStateOf(false) }
+    var stationSearching by remember {
+        mutableStateOf(false)
     }
 
     var loading by remember {
@@ -1081,6 +1114,182 @@ private fun AddJourneyScreen(
 
     var error by remember {
         mutableStateOf<String?>(null)
+    }
+
+    /*
+     * Train autocomplete
+     */
+    LaunchedEffect(trainQuery) {
+        if (selectedTrain != null) {
+            return@LaunchedEffect
+        }
+
+        val query = trainQuery.trim()
+
+        if (query.isEmpty()) {
+            trainSuggestions = emptyList()
+            trainExpanded = false
+            return@LaunchedEffect
+        }
+
+        delay(300)
+
+        trainSearching = true
+
+        JourneyLookupApi.searchTrains(
+            query = query,
+
+            onSuccess = {
+                trainSuggestions = it
+                trainSearching = false
+                trainExpanded = true
+            },
+
+            onError = {
+                trainSearching = false
+                trainSuggestions = emptyList()
+            }
+        )
+    }
+
+    /*
+     * Station autocomplete
+     */
+    LaunchedEffect(stationQuery) {
+        if (selectedStation != null) {
+            return@LaunchedEffect
+        }
+
+        val query = stationQuery.trim()
+
+        if (query.isEmpty()) {
+            stationSuggestions = emptyList()
+            stationExpanded = false
+            return@LaunchedEffect
+        }
+
+        delay(300)
+
+        stationSearching = true
+
+        JourneyLookupApi.searchStations(
+            query = query,
+
+            onSuccess = {
+                stationSuggestions = it
+                stationSearching = false
+                stationExpanded = true
+            },
+
+            onError = {
+                stationSearching = false
+                stationSuggestions = emptyList()
+            }
+        )
+    }
+
+    /*
+     * Date picker
+     */
+    if (showDatePicker) {
+        val todayMillis =
+            remember {
+                java.util.Calendar
+                    .getInstance()
+                    .apply {
+                        set(
+                            java.util.Calendar.HOUR_OF_DAY,
+                            0
+                        )
+                        set(
+                            java.util.Calendar.MINUTE,
+                            0
+                        )
+                        set(
+                            java.util.Calendar.SECOND,
+                            0
+                        )
+                        set(
+                            java.util.Calendar.MILLISECOND,
+                            0
+                        )
+                    }
+                    .timeInMillis
+            }
+
+        val datePickerState =
+            rememberDatePickerState(
+                initialSelectedDateMillis =
+                    todayMillis,
+
+                selectableDates =
+                    object :
+                        androidx.compose.material3
+                            .SelectableDates {
+
+                        override fun
+                        isSelectableDate(
+                            utcTimeMillis: Long
+                        ): Boolean {
+                            return utcTimeMillis >=
+                                todayMillis
+                        }
+                    }
+            )
+
+        DatePickerDialog(
+            onDismissRequest = {
+                showDatePicker = false
+            },
+
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val selected =
+                            datePickerState
+                                .selectedDateMillis
+
+                        if (selected != null) {
+                            val formatter =
+                                java.text.SimpleDateFormat(
+                                    "yyyy-MM-dd",
+                                    java.util.Locale.US
+                                )
+
+                            formatter.timeZone =
+                                java.util.TimeZone
+                                    .getTimeZone("UTC")
+
+                            journeyDate =
+                                formatter.format(
+                                    java.util.Date(
+                                        selected
+                                    )
+                                )
+                        }
+
+                        showDatePicker = false
+                        error = null
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDatePicker = false
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(
+                state = datePickerState
+            )
+        }
     }
 
     Scaffold(
@@ -1101,7 +1310,10 @@ private fun AddJourneyScreen(
                     .verticalScroll(
                         rememberScrollState()
                     )
-                    .padding(20.dp)
+                    .padding(20.dp),
+
+            verticalArrangement =
+                Arrangement.spacedBy(16.dp)
         ) {
 
             Text(
@@ -1115,126 +1327,387 @@ private fun AddJourneyScreen(
                     FontWeight.Bold
             )
 
-            Spacer(
-                modifier =
-                    Modifier.height(6.dp)
-            )
-
             Text(
                 text =
-                    "We'll use this information to alert you before you reach your destination."
+                    "Choose your train, travel date and destination. We'll take care of the rest."
             )
 
-            Spacer(
-                modifier =
-                    Modifier.height(24.dp)
-            )
+            /*
+             * TRAIN
+             */
+            if (selectedTrain == null) {
 
-            OutlinedTextField(
-                value = trainNumber,
+                ExposedDropdownMenuBox(
+                    expanded = trainExpanded,
+                    onExpandedChange = {
+                        trainExpanded =
+                            !trainExpanded
+                    }
+                ) {
 
-                onValueChange = {
-                    trainNumber =
-                        it.filter { character ->
-                            character.isDigit()
-                        }.take(5)
+                    OutlinedTextField(
+                        value = trainQuery,
 
-                    error = null
-                },
+                        onValueChange = {
+                            selectedTrain = null
+                            trainQuery = it
+                            error = null
+                        },
 
-                label = {
-                    Text("Train number")
-                },
+                        label = {
+                            Text("Train")
+                        },
 
-                supportingText = {
-                    Text(
-                        "5 digit train number"
+                        placeholder = {
+                            Text(
+                                "Search number or train name"
+                            )
+                        },
+
+                        leadingIcon = {
+                            Text("🔍")
+                        },
+
+                        trailingIcon = {
+                            if (trainSearching) {
+                                CircularProgressIndicator(
+                                    modifier =
+                                        Modifier
+                                            .height(18.dp)
+                                )
+                            } else {
+                                ExposedDropdownMenuDefaults
+                                    .TrailingIcon(
+                                        expanded =
+                                            trainExpanded
+                                    )
+                            }
+                        },
+
+                        singleLine = true,
+
+                        modifier =
+                            Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
                     )
+
+                    ExposedDropdownMenu(
+                        expanded = trainExpanded &&
+                            trainSuggestions.isNotEmpty(),
+
+                        onDismissRequest = {
+                            trainExpanded = false
+                        }
+                    ) {
+
+                        trainSuggestions
+                            .forEachIndexed { index, train ->
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+
+                                            Text(
+                                                text =
+                                                    train.number,
+                                                fontWeight =
+                                                    FontWeight
+                                                        .SemiBold
+                                            )
+
+                                            Text(
+                                                text =
+                                                    train.name,
+                                                style =
+                                                    MaterialTheme
+                                                        .typography
+                                                        .bodyMedium
+                                            )
+                                        }
+                                    },
+
+                                    onClick = {
+                                        selectedTrain =
+                                            train
+
+                                        trainQuery =
+                                            train.number
+
+                                        trainExpanded =
+                                            false
+
+                                        error = null
+                                    }
+                                )
+
+                                if (
+                                    index <
+                                    trainSuggestions.lastIndex
+                                ) {
+                                    HorizontalDivider()
+                                }
+                            }
+                    }
+                }
+
+            } else {
+
+                Card(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Column(
+                            modifier =
+                                Modifier.weight(1f)
+                        ) {
+
+                            Text(
+                                text =
+                                    selectedTrain!!.number,
+                                style =
+                                    MaterialTheme
+                                        .typography
+                                        .titleMedium,
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+
+                            Text(
+                                text =
+                                    selectedTrain!!.name
+                            )
+                        }
+
+                        TextButton(
+                            onClick = {
+                                selectedTrain = null
+                                trainQuery = ""
+                            }
+                        ) {
+                            Text("Change")
+                        }
+                    }
+                }
+            }
+
+            /*
+             * JOURNEY DATE
+             */
+            OutlinedButton(
+                onClick = {
+                    showDatePicker = true
                 },
 
                 modifier =
-                    Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth()
+            ) {
 
-                singleLine = true
-            )
+                Text(
+                    if (journeyDate.isBlank()) {
+                        "📅  Select journey date"
+                    } else {
+                        "📅  $journeyDate"
+                    }
+                )
+            }
 
-            Spacer(
-                modifier =
-                    Modifier.height(14.dp)
-            )
+            /*
+             * DESTINATION
+             */
+            if (selectedStation == null) {
 
-            OutlinedTextField(
-                value = journeyDate,
+                ExposedDropdownMenuBox(
+                    expanded = stationExpanded,
+                    onExpandedChange = {
+                        stationExpanded =
+                            !stationExpanded
+                    }
+                ) {
 
-                onValueChange = {
-                    journeyDate = it
-                    error = null
-                },
+                    OutlinedTextField(
+                        value = stationQuery,
 
-                label = {
-                    Text("Journey date")
-                },
+                        onValueChange = {
+                            selectedStation = null
+                            stationQuery = it
+                            error = null
+                        },
 
-                placeholder = {
-                    Text("YYYY-MM-DD")
-                },
+                        label = {
+                            Text("Destination")
+                        },
 
-                supportingText = {
-                    Text(
-                        "Example: 2026-08-15"
+                        placeholder = {
+                            Text(
+                                "Search station name or code"
+                            )
+                        },
+
+                        leadingIcon = {
+                            Text("📍")
+                        },
+
+                        trailingIcon = {
+                            if (
+                                stationSearching
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier =
+                                        Modifier
+                                            .height(18.dp)
+                                )
+                            } else {
+                                ExposedDropdownMenuDefaults
+                                    .TrailingIcon(
+                                        expanded =
+                                            stationExpanded
+                                    )
+                            }
+                        },
+
+                        singleLine = true,
+
+                        modifier =
+                            Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
                     )
-                },
 
-                modifier =
-                    Modifier.fillMaxWidth(),
+                    ExposedDropdownMenu(
+                        expanded =
+                            stationExpanded &&
+                            stationSuggestions
+                                .isNotEmpty(),
 
-                singleLine = true
-            )
+                        onDismissRequest = {
+                            stationExpanded =
+                                false
+                        }
+                    ) {
 
-            Spacer(
-                modifier =
-                    Modifier.height(14.dp)
-            )
+                        stationSuggestions
+                            .forEachIndexed {
+                                index,
+                                station ->
 
-            OutlinedTextField(
-                value = destination,
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
 
-                onValueChange = {
-                    destination =
-                        it.uppercase()
-                            .take(10)
+                                            Text(
+                                                text =
+                                                    station.code,
+                                                fontWeight =
+                                                    FontWeight.Bold
+                                            )
 
-                    error = null
-                },
+                                            Text(
+                                                text =
+                                                    station.name,
+                                                style =
+                                                    MaterialTheme
+                                                        .typography
+                                                        .bodyMedium
+                                            )
+                                        }
+                                    },
 
-                label = {
-                    Text(
-                        "Destination station"
-                    )
-                },
+                                    onClick = {
+                                        selectedStation =
+                                            station
 
-                placeholder = {
-                    Text("Station code")
-                },
+                                        stationQuery =
+                                            station.code
 
-                supportingText = {
-                    Text(
-                        "Example: NDLS"
-                    )
-                },
+                                        stationExpanded =
+                                            false
 
-                modifier =
-                    Modifier.fillMaxWidth(),
+                                        error = null
+                                    }
+                                )
 
-                singleLine = true
-            )
+                                if (
+                                    index <
+                                    stationSuggestions
+                                        .lastIndex
+                                ) {
+                                    HorizontalDivider()
+                                }
+                            }
+                    }
+                }
+
+            } else {
+
+                Card(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Column(
+                            modifier =
+                                Modifier.weight(1f)
+                        ) {
+
+                            Text(
+                                text =
+                                    selectedStation!!.code,
+                                style =
+                                    MaterialTheme
+                                        .typography
+                                        .titleMedium,
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+
+                            Text(
+                                text =
+                                    selectedStation!!.name
+                            )
+                        }
+
+                        TextButton(
+                            onClick = {
+                                selectedStation =
+                                    null
+
+                                stationQuery =
+                                    ""
+                            }
+                        ) {
+                            Text("Change")
+                        }
+                    }
+                }
+            }
 
             if (error != null) {
-                Spacer(
-                    modifier =
-                        Modifier.height(14.dp)
-                )
-
                 Text(
                     text = error!!,
                     color =
@@ -1246,7 +1719,7 @@ private fun AddJourneyScreen(
 
             Spacer(
                 modifier =
-                    Modifier.height(28.dp)
+                    Modifier.height(8.dp)
             )
 
             Row(
@@ -1259,11 +1732,9 @@ private fun AddJourneyScreen(
 
                 OutlinedButton(
                     onClick = onCancel,
-
+                    enabled = !loading,
                     modifier =
-                        Modifier.weight(1f),
-
-                    enabled = !loading
+                        Modifier.weight(1f)
                 ) {
                     Text("Cancel")
                 }
@@ -1271,34 +1742,29 @@ private fun AddJourneyScreen(
                 Button(
                     onClick = {
 
-                        if (
-                            trainNumber.length != 5 ||
-                            !trainNumber.all {
-                                it.isDigit()
-                            }
-                        ) {
+                        val train =
+                            selectedTrain
+
+                        val station =
+                            selectedStation
+
+                        if (train == null) {
                             error =
-                                "Train number must contain exactly 5 digits."
+                                "Please select a train."
                             return@Button
                         }
 
                         if (
-                            !Regex(
-                                "^\\d{4}-\\d{2}-\\d{2}$"
-                            ).matches(
-                                journeyDate
-                            )
+                            journeyDate.isBlank()
                         ) {
                             error =
-                                "Date must use YYYY-MM-DD."
+                                "Please select a journey date."
                             return@Button
                         }
 
-                        if (
-                            destination.length < 2
-                        ) {
+                        if (station == null) {
                             error =
-                                "Enter a valid destination station code."
+                                "Please select a destination."
                             return@Button
                         }
 
@@ -1307,12 +1773,15 @@ private fun AddJourneyScreen(
 
                         JourneyApi.createJourney(
                             context = context,
+
                             trainNumber =
-                                trainNumber,
+                                train.number,
+
                             journeyDate =
                                 journeyDate,
+
                             destinationStationCode =
-                                destination.uppercase(),
+                                station.code,
 
                             onSuccess = {
                                 loading = false
@@ -1326,29 +1795,23 @@ private fun AddJourneyScreen(
                         )
                     },
 
-                    modifier =
-                        Modifier.weight(1f),
+                    enabled = !loading,
 
-                    enabled = !loading
+                    modifier =
+                        Modifier.weight(1f)
                 ) {
 
                     if (loading) {
                         CircularProgressIndicator(
                             modifier =
-                                Modifier.height(20.dp)
+                                Modifier
+                                    .height(20.dp)
                         )
                     } else {
-                        Text(
-                            "Create Journey"
-                        )
+                        Text("Create Journey")
                     }
                 }
             }
-
-            Spacer(
-                modifier =
-                    Modifier.height(24.dp)
-            )
         }
     }
 }
