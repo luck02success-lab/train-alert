@@ -17,3 +17,5 @@ local.properties
 
 # Local Android configuration
 local.properties
+.vercel
+*.hprof
