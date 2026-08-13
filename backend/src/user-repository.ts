@@ -97,6 +97,7 @@ export class PostgresUserRepository
         )
         VALUES ($1)
         ON CONFLICT (firebase_uid)
+        WHERE firebase_uid IS NOT NULL
         DO UPDATE SET
           firebase_uid = EXCLUDED.firebase_uid
         RETURNING ${USER_COLUMNS}
