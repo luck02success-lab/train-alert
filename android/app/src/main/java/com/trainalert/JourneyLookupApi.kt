@@ -1,11 +1,11 @@
 package com.trainalert
 
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.URLEncoder
@@ -31,24 +31,13 @@ object JourneyLookupApi {
         1
 
     private val mainHandler =
-        Handler(
-            Looper.getMainLooper()
-        )
+        Handler(Looper.getMainLooper())
 
     private val client =
         OkHttpClient.Builder()
-            .connectTimeout(
-                10,
-                TimeUnit.SECONDS
-            )
-            .readTimeout(
-                10,
-                TimeUnit.SECONDS
-            )
-            .writeTimeout(
-                10,
-                TimeUnit.SECONDS
-            )
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
             .build()
 
     private val executor =
@@ -56,9 +45,7 @@ object JourneyLookupApi {
 
     fun searchTrains(
         query: String,
-        onSuccess: (
-            List<TrainSuggestion>
-        ) -> Unit,
+        onSuccess: (List<TrainSuggestion>) -> Unit,
         onError: (String) -> Unit
     ) {
         val encodedQuery =
@@ -88,9 +75,7 @@ object JourneyLookupApi {
 
     fun searchStations(
         query: String,
-        onSuccess: (
-            List<StationSuggestion>
-        ) -> Unit,
+        onSuccess: (List<StationSuggestion>) -> Unit,
         onError: (String) -> Unit
     ) {
         val encodedQuery =
@@ -130,25 +115,28 @@ object JourneyLookupApi {
 
             try {
                 var token =
-                    FirebaseAuthManager
-                        .getIdToken()
+                    FirebaseAuthManager.getIdToken()
 
                 while (true) {
+
                     val request =
-                        createRequest(
-                            path = path,
-                            token = token
-                        )
+                        Request.Builder()
+                            .url(
+                                BuildConfig.API_BASE_URL +
+                                    path
+                            )
+                            .header(
+                                "Authorization",
+                                "Bearer $token"
+                            )
+                            .get()
+                            .build()
 
                     val response =
                         client
                             .newCall(request)
                             .execute()
 
-                    /*
-                     * Retry exactly once when the
-                     * Firebase ID token has expired.
-                     */
                     if (
                         response.code == 401 &&
                         attempt < MAX_AUTH_RETRIES
@@ -177,13 +165,17 @@ object JourneyLookupApi {
                                 .orEmpty()
 
                         if (!it.isSuccessful) {
+
                             val message =
                                 parseErrorMessage(
-                                    body =
-                                        body,
-                                    statusCode =
-                                        it.code
+                                    body,
+                                    it.code
                                 )
+
+                            Log.w(
+                                TAG,
+                                "Lookup failed: ${it.code} $body"
+                            )
 
                             postError(
                                 onError,
@@ -197,6 +189,7 @@ object JourneyLookupApi {
                             try {
                                 parser(body)
                             } catch (error: Exception) {
+
                                 Log.e(
                                     TAG,
                                     "Unable to parse lookup response",
@@ -218,7 +211,9 @@ object JourneyLookupApi {
 
                     return@execute
                 }
+
             } catch (error: Exception) {
+
                 Log.e(
                     TAG,
                     "Lookup request failed",
@@ -233,27 +228,12 @@ object JourneyLookupApi {
         }
     }
 
-    private fun createRequest(
-        path: String,
-        token: String
-    ): Request {
-        return Request.Builder()
-            .url(
-                BuildConfig.API_BASE_URL + path
-            )
-            .header(
-                "Authorization",
-                "Bearer $token"
-            )
-            .get()
-            .build()
-    }
-
     private fun parseTrains(
         body: String
     ): List<TrainSuggestion> {
+
         val array =
-            org.json.JSONArray(body)
+            JSONArray(body)
 
         return buildList {
 
@@ -261,15 +241,18 @@ object JourneyLookupApi {
                 index in
                 0 until array.length()
             ) {
+
                 val item =
                     array.getJSONObject(index)
 
                 val number =
-                    item.optString("number")
+                    item
+                        .optString("number")
                         .trim()
 
                 val name =
-                    item.optString("name")
+                    item
+                        .optString("name")
                         .trim()
 
                 if (
@@ -290,8 +273,9 @@ object JourneyLookupApi {
     private fun parseStations(
         body: String
     ): List<StationSuggestion> {
+
         val array =
-            org.json.JSONArray(body)
+            JSONArray(body)
 
         return buildList {
 
@@ -299,16 +283,19 @@ object JourneyLookupApi {
                 index in
                 0 until array.length()
             ) {
+
                 val item =
                     array.getJSONObject(index)
 
                 val code =
-                    item.optString("code")
+                    item
+                        .optString("code")
                         .trim()
                         .uppercase()
 
                 val name =
-                    item.optString("name")
+                    item
+                        .optString("name")
                         .trim()
 
                 if (
@@ -330,7 +317,9 @@ object JourneyLookupApi {
         body: String,
         statusCode: Int
     ): String {
+
         return try {
+
             val json =
                 org.json.JSONObject(body)
 
@@ -343,6 +332,7 @@ object JourneyLookupApi {
                     it.isNotBlank()
                 }
                 ?: when (statusCode) {
+
                     401 ->
                         "Your session is no longer valid."
 
@@ -358,8 +348,11 @@ object JourneyLookupApi {
                     else ->
                         "Unable to search right now."
                 }
+
         } catch (_: Exception) {
+
             when (statusCode) {
+
                 401 ->
                     "Your session is no longer valid."
 
@@ -378,7 +371,9 @@ object JourneyLookupApi {
     private fun networkErrorMessage(
         error: Exception
     ): String {
+
         return when (error) {
+
             is SocketTimeoutException ->
                 "The search request timed out. Please try again."
 

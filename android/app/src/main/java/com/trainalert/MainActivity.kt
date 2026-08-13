@@ -5,9 +5,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,34 +19,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
@@ -52,19 +39,172 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
+
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+
+import androidx.compose.ui.unit.dp
+
 import kotlinx.coroutines.delay
+
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.util.Locale
+
+
+private val INDIA_ZONE =
+    ZoneId.of("Asia/Kolkata")
+
+private val INDIA_LOCALE =
+    Locale("en", "IN")
+
+private val JOURNEY_DATE_FORMATTER =
+    DateTimeFormatter.ofPattern(
+        "dd MMM yyyy",
+        INDIA_LOCALE
+    )
+
+private val TIME_FORMATTER =
+    DateTimeFormatter.ofPattern(
+        "h:mm a",
+        INDIA_LOCALE
+    )
+
+private val DATE_TIME_FORMATTER =
+    DateTimeFormatter.ofPattern(
+        "dd MMM, h:mm a",
+        INDIA_LOCALE
+    )
+
+
+private fun formatJourneyDate(
+    date: String
+): String {
+
+    return try {
+
+        val journeyDate =
+            LocalDate.parse(date)
+
+        val today =
+            LocalDate.now(INDIA_ZONE)
+
+        when (journeyDate) {
+
+            today ->
+                "Today · " +
+                    journeyDate.format(
+                        JOURNEY_DATE_FORMATTER
+                    )
+
+            today.plusDays(1) ->
+                "Tomorrow · " +
+                    journeyDate.format(
+                        JOURNEY_DATE_FORMATTER
+                    )
+
+            else ->
+                journeyDate.format(
+                    JOURNEY_DATE_FORMATTER
+                )
+        }
+
+    } catch (_: DateTimeParseException) {
+
+        date
+    }
+}
+
+
+private fun formatIstDateTime(
+    value: String
+): String {
+
+    return try {
+
+        val instant =
+            Instant.parse(value)
+
+        val dateTime =
+            instant.atZone(
+                INDIA_ZONE
+            )
+
+        val today =
+            LocalDate.now(INDIA_ZONE)
+
+        when (dateTime.toLocalDate()) {
+
+            today ->
+                "Today · " +
+                    dateTime.format(
+                        TIME_FORMATTER
+                    )
+
+            today.plusDays(1) ->
+                "Tomorrow · " +
+                    dateTime.format(
+                        TIME_FORMATTER
+                    )
+
+            else ->
+                dateTime.format(
+                    DATE_TIME_FORMATTER
+                )
+        }
+
+    } catch (_: Exception) {
+
+        value
+    }
+}
+
+
+private fun greetingForIndia(): String {
+
+    val hour =
+        LocalTime
+            .now(INDIA_ZONE)
+            .hour
+
+    return when {
+
+        hour < 12 ->
+            "Good morning"
+
+        hour < 17 ->
+            "Good afternoon"
+
+        else ->
+            "Good evening"
+    }
+}
+
 
 class MainActivity : ComponentActivity() {
 
     companion object {
+
         const val EXTRA_JOURNEY_ID =
             "journeyId"
     }
@@ -82,6 +222,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
+
         super.onCreate(savedInstanceState)
 
         pendingJourneyId =
@@ -90,10 +231,14 @@ class MainActivity : ComponentActivity() {
             )
 
         setContent {
+
             TrainAlertApp(
-                context = applicationContext,
+                context =
+                    applicationContext,
+
                 initialJourneyId =
                     pendingJourneyId,
+
                 onInitialJourneyHandled = {
                     pendingJourneyId = null
                 }
@@ -103,9 +248,11 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermission()
     }
 
+
     override fun onNewIntent(
         intent: Intent
     ) {
+
         super.onNewIntent(intent)
 
         setIntent(intent)
@@ -116,13 +263,19 @@ class MainActivity : ComponentActivity() {
             )
 
         if (!journeyId.isNullOrBlank()) {
-            pendingJourneyId = journeyId
+
+            pendingJourneyId =
+                journeyId
 
             setContent {
+
                 TrainAlertApp(
-                    context = applicationContext,
+                    context =
+                        applicationContext,
+
                     initialJourneyId =
                         journeyId,
+
                     onInitialJourneyHandled = {
                         pendingJourneyId = null
                     }
@@ -131,20 +284,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
     private fun requestNotificationPermission() {
+
         if (
             Build.VERSION.SDK_INT >=
             Build.VERSION_CODES.TIRAMISU
         ) {
+
             if (
                 checkSelfPermission(
                     Manifest.permission.POST_NOTIFICATIONS
                 ) !=
                 PackageManager.PERMISSION_GRANTED
             ) {
+
                 notificationPermissionLauncher.launch(
                     Manifest.permission.POST_NOTIFICATIONS
                 )
+
                 return
             }
         }
@@ -152,7 +310,9 @@ class MainActivity : ComponentActivity() {
         registerDevice()
     }
 
+
     private fun registerDevice() {
+
         DeviceRegistrationManager
             .registerCurrentToken(
                 applicationContext
@@ -160,13 +320,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
 fun TrainAlertApp(
     context: android.content.Context,
     initialJourneyId: String? = null,
     onInitialJourneyHandled: () -> Unit = {}
 ) {
+
     var journeys by remember {
         mutableStateOf<List<Journey>>(
             emptyList()
@@ -191,7 +352,9 @@ fun TrainAlertApp(
         )
     }
 
+
     fun loadJourneys() {
+
         loading = true
         error = null
 
@@ -210,7 +373,9 @@ fun TrainAlertApp(
         )
     }
 
+
     LaunchedEffect(Unit) {
+
         DeviceRegistrationManager
             .ensureUser(
                 context = context,
@@ -226,13 +391,16 @@ fun TrainAlertApp(
             )
     }
 
+
     LaunchedEffect(
         initialJourneyId
     ) {
+
         if (
             !initialJourneyId
                 .isNullOrBlank()
         ) {
+
             selectedJourneyId =
                 initialJourneyId
 
@@ -240,7 +408,9 @@ fun TrainAlertApp(
         }
     }
 
+
     if (showAddJourney) {
+
         AddJourneyScreen(
             context = context,
 
@@ -257,12 +427,15 @@ fun TrainAlertApp(
         return
     }
 
+
     if (
         !selectedJourneyId
             .isNullOrBlank()
     ) {
+
         JourneyDetailScreen(
             context = context,
+
             journeyId =
                 selectedJourneyId!!,
 
@@ -279,14 +452,12 @@ fun TrainAlertApp(
         return
     }
 
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text("Train Alert")
-                }
-            )
-        }
+        containerColor =
+            MaterialTheme
+                .colorScheme
+                .background
     ) { innerPadding ->
 
         LazyColumn(
@@ -300,188 +471,445 @@ fun TrainAlertApp(
 
             verticalArrangement =
                 Arrangement.spacedBy(
-                    16.dp
+                    18.dp
                 )
         ) {
 
             item {
+
                 Spacer(
                     modifier =
                         Modifier.height(8.dp)
                 )
 
-                Text(
-                    text =
-                        "Never miss your train stop.",
-                    style =
-                        MaterialTheme
-                            .typography
-                            .headlineSmall,
-                    fontWeight =
-                        FontWeight.Bold
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(6.dp)
-                )
-
-                Text(
-                    text =
-                        "Get notified before your train reaches your destination."
+                HomeHeader(
+                    journeyCount =
+                        journeys.size
                 )
             }
 
+
             item {
+
                 Button(
                     onClick = {
                         showAddJourney = true
                     },
 
                     modifier =
-                        Modifier.fillMaxWidth()
+                        Modifier.fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(
+                            16.dp
+                        )
                 ) {
-                    Text("Add Journey")
+
+                    Text(
+                        text =
+                            "Add Journey",
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .titleMedium
+                    )
                 }
             }
+
 
             when {
 
                 loading -> {
-                    item {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        vertical = 32.dp
-                                    ),
 
-                            contentAlignment =
-                                Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
+                    item {
+                        HomeLoadingCard()
                     }
                 }
+
 
                 error != null -> {
+
                     item {
-                        Card(
-                            modifier =
-                                Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier =
-                                    Modifier.padding(
-                                        16.dp
-                                    )
-                            ) {
 
-                                Text(
-                                    text =
-                                        "Something went wrong",
-                                    style =
-                                        MaterialTheme
-                                            .typography
-                                            .titleMedium
-                                )
+                        HomeErrorCard(
+                            message =
+                                error!!,
 
-                                Spacer(
-                                    modifier =
-                                        Modifier.height(6.dp)
-                                )
-
-                                Text(
-                                    text =
-                                        error!!,
-                                    color =
-                                        MaterialTheme
-                                            .colorScheme
-                                            .error
-                                )
-
-                                Spacer(
-                                    modifier =
-                                        Modifier.height(12.dp)
-                                )
-
-                                OutlinedButton(
-                                    onClick = {
-                                        loadJourneys()
-                                    }
-                                ) {
-                                    Text("Retry")
-                                }
-                            }
-                        }
-                    }
-                }
-
-                journeys.isEmpty() -> {
-                    item {
-                        EmptyJourneysCard(
-                            onAddJourney = {
-                                showAddJourney =
-                                    true
+                            onRetry = {
+                                loadJourneys()
                             }
                         )
                     }
                 }
 
-                else -> {
+
+                journeys.isEmpty() -> {
+
                     item {
+
+                        EmptyHomeCard()
+                    }
+                }
+
+
+                else -> {
+
+                    item {
+
                         Text(
                             text =
-                                "Your Journeys",
+                                "Upcoming journey",
+
                             style =
                                 MaterialTheme
                                     .typography
                                     .titleLarge,
+
                             fontWeight =
-                                FontWeight.SemiBold
+                                FontWeight.Bold
                         )
                     }
 
-                    items(
-                        journeys,
-                        key = {
-                            it.id
-                        }
-                    ) { journey ->
-
-                        JourneyCard(
-                            journey = journey,
-
-                            onClick = {
-                                selectedJourneyId =
-                                    journey.id
-                            }
-                        )
-                    }
 
                     item {
-                        Spacer(
-                            modifier =
-                                Modifier.height(
-                                    20.dp
+
+                        journeys
+                            .firstOrNull()
+                            ?.let { journey ->
+
+                                UpcomingJourneyCard(
+                                    journey =
+                                        journey,
+
+                                    onClick = {
+                                        selectedJourneyId =
+                                            journey.id
+                                    }
                                 )
-                        )
+                            }
                     }
+
+
+                    if (
+                        journeys.size > 1
+                    ) {
+
+                        item {
+
+                            Text(
+                                text =
+                                    "Your Journeys",
+
+                                style =
+                                    MaterialTheme
+                                        .typography
+                                        .titleLarge,
+
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+                        }
+
+
+                        items(
+                            journeys.drop(1),
+
+                            key = {
+                                it.id
+                            }
+                        ) { journey ->
+
+                            JourneyCard(
+                                journey =
+                                    journey,
+
+                                onClick = {
+                                    selectedJourneyId =
+                                        journey.id
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+
+            item {
+
+                Spacer(
+                    modifier =
+                        Modifier.height(24.dp)
+                )
+
+                Text(
+                    text =
+                        "We'll notify you before your train reaches your destination.",
+
+                    style =
+                        MaterialTheme
+                            .typography
+                            .bodySmall,
+
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant,
+
+                    modifier =
+                        Modifier.fillMaxWidth()
+                )
+
+                Spacer(
+                    modifier =
+                        Modifier.height(12.dp)
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun HomeHeader(
+    journeyCount: Int
+) {
+
+    val greeting =
+        greetingForIndia()
+
+    Column {
+
+        Text(
+            text =
+                "Train Alert",
+
+            style =
+                MaterialTheme
+                    .typography
+                    .headlineSmall,
+
+            fontWeight =
+                FontWeight.SemiBold
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(24.dp)
+        )
+
+
+        Text(
+            text =
+                "$greeting 👋",
+
+            style =
+                MaterialTheme
+                    .typography
+                    .bodyLarge,
+
+            color =
+                MaterialTheme
+                    .colorScheme
+                    .primary
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(6.dp)
+        )
+
+
+        Text(
+            text =
+                if (journeyCount == 0) {
+                    "Your journey,\nwithout the worry."
+                } else {
+                    "Ready for your next journey?"
+                },
+
+            style =
+                MaterialTheme
+                    .typography
+                    .headlineMedium,
+
+            fontWeight =
+                FontWeight.Bold
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(8.dp)
+        )
+
+
+        Text(
+            text =
+                if (journeyCount == 0) {
+                    "Add your train once. We'll remind you before you reach your destination."
+                } else {
+                    "We'll keep an eye on your journey and let you know when it's time to get ready."
+                },
+
+            style =
+                MaterialTheme
+                    .typography
+                    .bodyLarge
+        )
+    }
+}
+
+
+@Composable
+private fun EmptyHomeCard() {
+
+    Card(
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        shape =
+            RoundedCornerShape(
+                20.dp
+            )
+    ) {
+
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(22.dp)
+        ) {
+
+            Text(
+                text =
+                    "Your first journey",
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleLarge,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(8.dp)
+            )
+
+
+            Text(
+                text =
+                    "Choose your train, travel date and destination. We'll handle the alerts automatically."
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(18.dp)
+            )
+
+
+            Row(
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Text(
+                    text =
+                        "🚆",
+
+                    style =
+                        MaterialTheme
+                            .typography
+                            .headlineMedium
+                )
+
+
+                Spacer(
+                    modifier =
+                        Modifier.width(10.dp)
+                )
+
+
+                Column {
+
+                    Text(
+                        text =
+                            "Add your journey"
+                    )
+
+                    Text(
+                        text =
+                            "We'll take it from there.",
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodySmall,
+
+                        color =
+                            MaterialTheme
+                                .colorScheme
+                                .onSurfaceVariant
+                    )
                 }
             }
         }
     }
 }
 
+
 @Composable
-private fun EmptyJourneysCard(
-    onAddJourney: () -> Unit
-) {
+private fun HomeLoadingCard() {
+
     Card(
         modifier =
-            Modifier.fillMaxWidth()
+            Modifier.fillMaxWidth(),
+
+        shape =
+            RoundedCornerShape(
+                20.dp
+            )
     ) {
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(40.dp),
+
+            contentAlignment =
+                Alignment.Center
+        ) {
+
+            CircularProgressIndicator()
+        }
+    }
+}
+
+
+@Composable
+private fun HomeErrorCard(
+    message: String,
+    onRetry: () -> Unit
+) {
+
+    Card(
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        shape =
+            RoundedCornerShape(
+                20.dp
+            )
+    ) {
+
         Column(
             modifier =
                 Modifier.padding(20.dp)
@@ -489,53 +917,361 @@ private fun EmptyJourneysCard(
 
             Text(
                 text =
-                    "No journeys yet",
+                    "We couldn't load your journeys",
+
                 style =
                     MaterialTheme
                         .typography
                         .titleMedium,
+
                 fontWeight =
-                    FontWeight.SemiBold
+                    FontWeight.Bold
             )
+
 
             Spacer(
                 modifier =
-                    Modifier.height(8.dp)
+                    Modifier.height(6.dp)
             )
+
 
             Text(
                 text =
-                    "Add a journey and we'll notify you before you reach your destination."
+                    message,
+
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .error
             )
+
 
             Spacer(
                 modifier =
-                    Modifier.height(16.dp)
+                    Modifier.height(14.dp)
             )
 
-            Button(
-                onClick = onAddJourney,
-                modifier =
-                    Modifier.fillMaxWidth()
+
+            OutlinedButton(
+                onClick = onRetry
             ) {
-                Text(
-                    "Add Your First Journey"
-                )
+
+                Text("Try again")
             }
         }
     }
 }
+
+
+@Composable
+private fun UpcomingJourneyCard(
+    journey: Journey,
+    onClick: () -> Unit
+) {
+
+    Card(
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        onClick = onClick,
+
+        shape =
+            RoundedCornerShape(
+                20.dp
+            )
+    ) {
+
+        Column(
+            modifier =
+                Modifier.padding(20.dp)
+        ) {
+
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                horizontalArrangement =
+                    Arrangement.SpaceBetween,
+
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Text(
+                    text =
+                        "UPCOMING",
+
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelMedium,
+
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .primary,
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
+
+
+                Text(
+                    text =
+                        journey.state
+                            .replaceFirstChar {
+                                it.uppercase()
+                            },
+
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelLarge,
+
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .primary
+                )
+            }
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(12.dp)
+            )
+
+
+            Text(
+                text =
+                    "Train ${journey.trainNumber}",
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .headlineSmall,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(4.dp)
+            )
+
+
+            Text(
+                text =
+                    journey.destinationStationName
+                        ?.takeIf {
+                            it.isNotBlank()
+                        }
+                        ?.let {
+                            "${journey.destinationStationCode} · $it"
+                        }
+                        ?: journey.destinationStationCode,
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleMedium
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(18.dp)
+            )
+
+
+            Text(
+                text =
+                    formatJourneyDate(
+                        journey.journeyDate
+                    ),
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodyLarge,
+
+                fontWeight =
+                    FontWeight.SemiBold
+            )
+
+
+            journey.expectedArrival
+                ?.takeIf {
+                    it.isNotBlank()
+                }
+                ?.let { arrival ->
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(6.dp)
+                    )
+
+                    Text(
+                        text =
+                            "Expected arrival",
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .labelMedium,
+
+                        color =
+                            MaterialTheme
+                                .colorScheme
+                                .onSurfaceVariant
+                    )
+
+                    Text(
+                        text =
+                            formatIstDateTime(
+                                arrival
+                            ),
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .titleLarge,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
+
+
+            journey.nextAlert
+                ?.takeIf {
+                    it.isNotBlank()
+                }
+                ?.let { alert ->
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(16.dp)
+                    )
+
+                    Card(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        shape =
+                            RoundedCornerShape(
+                                14.dp
+                            )
+                    ) {
+
+                        Row(
+                            modifier =
+                                Modifier.padding(
+                                    14.dp
+                                ),
+
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+
+                            Text(
+                                text =
+                                    "🔔",
+
+                                style =
+                                    MaterialTheme
+                                        .typography
+                                        .titleLarge
+                            )
+
+
+                            Spacer(
+                                modifier =
+                                    Modifier.width(10.dp)
+                            )
+
+
+                            Column {
+
+                                Text(
+                                    text =
+                                        "Next alert",
+
+                                    style =
+                                        MaterialTheme
+                                            .typography
+                                            .labelMedium
+                                )
+
+
+                                Text(
+                                    text =
+                                        formatIstDateTime(
+                                            alert
+                                        ),
+
+                                    style =
+                                        MaterialTheme
+                                            .typography
+                                            .bodyLarge,
+
+                                    fontWeight =
+                                        FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(14.dp)
+            )
+
+
+            Text(
+                text =
+                    "View journey →",
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .labelLarge,
+
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .primary,
+
+                fontWeight =
+                    FontWeight.SemiBold
+            )
+        }
+    }
+}
+
 
 @Composable
 private fun JourneyCard(
     journey: Journey,
     onClick: () -> Unit
 ) {
+
     Card(
         modifier =
             Modifier.fillMaxWidth(),
-        onClick = onClick
+
+        onClick = onClick,
+
+        shape =
+            RoundedCornerShape(
+                18.dp
+            )
     ) {
+
         Column(
             modifier =
                 Modifier.padding(18.dp)
@@ -544,85 +1280,40 @@ private fun JourneyCard(
             Row(
                 modifier =
                     Modifier.fillMaxWidth(),
+
                 horizontalArrangement =
-                    Arrangement.SpaceBetween
+                    Arrangement.SpaceBetween,
+
+                verticalAlignment =
+                    Alignment.CenterVertically
             ) {
 
                 Text(
                     text =
                         "Train ${journey.trainNumber}",
+
                     style =
                         MaterialTheme
                             .typography
-                            .titleMedium,
+                            .titleLarge,
+
                     fontWeight =
-                        FontWeight.SemiBold
+                        FontWeight.Bold
                 )
+
 
                 Text(
                     text =
                         journey.state
                             .replaceFirstChar {
                                 it.uppercase()
-                            }
-                )
-            }
+                            },
 
-            Spacer(
-                modifier =
-                    Modifier.height(8.dp)
-            )
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelLarge,
 
-            Text(
-                text =
-                    journey.destinationStationName
-                        ?.let {
-                            "${journey.destinationStationCode} — $it"
-                        }
-                        ?: journey.destinationStationCode
-            )
-
-            Text(
-                text =
-                    "Journey date: ${journey.journeyDate}"
-            )
-
-            if (
-                journey.expectedArrival
-                    != null
-            ) {
-                Text(
-                    text =
-                        "Expected arrival: " +
-                            journey.expectedArrival
-                )
-            }
-
-            if (
-                journey.delayMinutes
-                    != null
-            ) {
-                Text(
-                    text =
-                        "Delay: " +
-                            "${journey.delayMinutes} min"
-                )
-            }
-
-            if (
-                journey.nextAlert
-                    != null &&
-                journey.state == "scheduled"
-            ) {
-                Spacer(
-                    modifier =
-                        Modifier.height(4.dp)
-                )
-
-                Text(
-                    text =
-                        "Next alert: " +
-                            journey.nextAlert,
                     color =
                         MaterialTheme
                             .colorScheme
@@ -630,22 +1321,212 @@ private fun JourneyCard(
                 )
             }
 
+
             Spacer(
                 modifier =
-                    Modifier.height(8.dp)
+                    Modifier.height(10.dp)
             )
+
+
+            Text(
+                text =
+                    journey.destinationStationName
+                        ?.takeIf {
+                            it.isNotBlank()
+                        }
+                        ?.let {
+                            "${journey.destinationStationCode} · $it"
+                        }
+                        ?: journey.destinationStationCode,
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleMedium
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(10.dp)
+            )
+
+
+            Text(
+                text =
+                    formatJourneyDate(
+                        journey.journeyDate
+                    ),
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodyLarge,
+
+                fontWeight =
+                    FontWeight.SemiBold
+            )
+
+
+            journey.expectedArrival
+                ?.takeIf {
+                    it.isNotBlank()
+                }
+                ?.let {
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(8.dp)
+                    )
+
+                    Text(
+                        text =
+                            "Expected arrival",
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .labelMedium
+                    )
+
+                    Text(
+                        text =
+                            formatIstDateTime(it),
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodyLarge,
+
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+                }
+
+
+            journey.delayMinutes
+                ?.let {
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(6.dp)
+                    )
+
+                    Text(
+                        text =
+                            when {
+                                it > 0 ->
+                                    "Running $it min late"
+
+                                it < 0 ->
+                                    "Running ${-it} min early"
+
+                                else ->
+                                    "Running on time"
+                            },
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodyMedium,
+
+                        color =
+                            when {
+                                it > 0 ->
+                                    MaterialTheme
+                                        .colorScheme
+                                        .error
+
+                                else ->
+                                    MaterialTheme
+                                        .colorScheme
+                                        .primary
+                            }
+                    )
+                }
+
+
+            if (
+                journey.nextAlert != null &&
+                journey.state == "scheduled"
+            ) {
+
+                Spacer(
+                    modifier =
+                        Modifier.height(12.dp)
+                )
+
+                Card(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(
+                            14.dp
+                        )
+                ) {
+
+                    Column(
+                        modifier =
+                            Modifier.padding(
+                                12.dp
+                            )
+                    ) {
+
+                        Text(
+                            text =
+                                "🔔 Next alert",
+
+                            style =
+                                MaterialTheme
+                                    .typography
+                                    .labelLarge
+                        )
+
+
+                        Text(
+                            text =
+                                formatIstDateTime(
+                                    journey.nextAlert
+                                ),
+
+                            style =
+                                MaterialTheme
+                                    .typography
+                                    .bodyLarge,
+
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(12.dp)
+            )
+
 
             Text(
                 text =
                     "Tap for details",
+
                 style =
                     MaterialTheme
                         .typography
-                        .bodySmall
+                        .bodySmall,
+
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant
             )
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -655,6 +1536,7 @@ private fun JourneyDetailScreen(
     onBack: () -> Unit,
     onCancelled: () -> Unit
 ) {
+
     var journey by remember {
         mutableStateOf<Journey?>(null)
     }
@@ -675,13 +1557,18 @@ private fun JourneyDetailScreen(
         mutableStateOf(false)
     }
 
+
     fun loadJourney() {
+
         loading = true
         error = null
 
         JourneyApi.getJourney(
-            context = context,
-            journeyId = journeyId,
+            context =
+                context,
+
+            journeyId =
+                journeyId,
 
             onSuccess = {
                 journey = it
@@ -695,17 +1582,22 @@ private fun JourneyDetailScreen(
         )
     }
 
+
     LaunchedEffect(
         journeyId
     ) {
         loadJourney()
     }
 
+
     if (
         showCancelConfirmation
     ) {
+
         AlertDialog(
+
             onDismissRequest = {
+
                 if (!cancelling) {
                     showCancelConfirmation =
                         false
@@ -713,85 +1605,127 @@ private fun JourneyDetailScreen(
             },
 
             title = {
-                Text("Cancel journey?")
+                Text(
+                    "Cancel journey?"
+                )
             },
 
             text = {
+
                 Text(
                     "You will no longer receive alerts for this journey."
                 )
             },
 
             confirmButton = {
+
                 TextButton(
-                    enabled = !cancelling,
+
+                    enabled =
+                        !cancelling,
 
                     onClick = {
+
                         cancelling = true
                         error = null
 
                         JourneyApi.cancelJourney(
-                            context = context,
+
+                            context =
+                                context,
+
                             journeyId =
                                 journeyId,
 
                             onSuccess = {
-                                cancelling = false
+
+                                cancelling =
+                                    false
+
                                 showCancelConfirmation =
                                     false
+
                                 onCancelled()
                             },
 
                             onError = {
-                                cancelling = false
-                                error = it
+
+                                cancelling =
+                                    false
+
+                                error =
+                                    it
+
                                 showCancelConfirmation =
                                     false
                             }
                         )
                     }
                 ) {
-                    Text("Cancel Journey")
+
+                    Text(
+                        "Cancel Journey"
+                    )
                 }
             },
 
             dismissButton = {
+
                 TextButton(
-                    enabled = !cancelling,
+
+                    enabled =
+                        !cancelling,
 
                     onClick = {
+
                         showCancelConfirmation =
                             false
                     }
                 ) {
-                    Text("Keep Journey")
+
+                    Text(
+                        "Keep Journey"
+                    )
                 }
             }
         )
     }
 
+
     Scaffold(
+
         topBar = {
+
             TopAppBar(
+
                 title = {
-                    Text("Journey Details")
+                    Text(
+                        "Journey Details"
+                    )
                 },
 
                 navigationIcon = {
+
                     TextButton(
                         onClick = onBack
                     ) {
-                        Text("Back")
+
+                        Text(
+                            "Back"
+                        )
                     }
                 }
             )
         }
+
     ) { innerPadding ->
 
         when {
 
             loading -> {
+
                 Box(
+
                     modifier =
                         Modifier
                             .fillMaxSize()
@@ -801,14 +1735,19 @@ private fun JourneyDetailScreen(
 
                     contentAlignment =
                         Alignment.Center
+
                 ) {
+
                     CircularProgressIndicator()
                 }
             }
 
+
             error != null &&
                 journey == null -> {
+
                 Column(
+
                     modifier =
                         Modifier
                             .fillMaxSize()
@@ -824,47 +1763,65 @@ private fun JourneyDetailScreen(
                     Text(
                         text =
                             "Unable to load journey",
+
                         style =
                             MaterialTheme
                                 .typography
                                 .titleLarge
                     )
 
+
                     Spacer(
                         modifier =
                             Modifier.height(8.dp)
                     )
 
+
                     Text(
                         text =
                             error!!,
+
                         color =
                             MaterialTheme
                                 .colorScheme
                                 .error
                     )
 
+
                     Spacer(
                         modifier =
                             Modifier.height(16.dp)
                     )
 
+
                     OutlinedButton(
                         onClick =
                             ::loadJourney
                     ) {
-                        Text("Retry")
+
+                        Text(
+                            "Try again"
+                        )
                     }
                 }
             }
 
+
             journey != null -> {
+
                 JourneyDetailsContent(
-                    journey = journey!!,
-                    error = error,
-                    cancelling = cancelling,
+
+                    journey =
+                        journey!!,
+
+                    error =
+                        error,
+
+                    cancelling =
+                        cancelling,
 
                     onCancel = {
+
                         showCancelConfirmation =
                             true
                     },
@@ -882,6 +1839,7 @@ private fun JourneyDetailScreen(
     }
 }
 
+
 @Composable
 private fun JourneyDetailsContent(
     journey: Journey,
@@ -890,6 +1848,7 @@ private fun JourneyDetailsContent(
     onCancel: () -> Unit,
     modifier: Modifier
 ) {
+
     Column(
         modifier =
             modifier.verticalScroll(
@@ -900,24 +1859,31 @@ private fun JourneyDetailsContent(
         Text(
             text =
                 "Train ${journey.trainNumber}",
+
             style =
                 MaterialTheme
                     .typography
                     .headlineMedium,
+
             fontWeight =
                 FontWeight.Bold
         )
+
 
         Spacer(
             modifier =
                 Modifier.height(8.dp)
         )
 
+
         Text(
             text =
                 journey.destinationStationName
+                    ?.takeIf {
+                        it.isNotBlank()
+                    }
                     ?.let {
-                        "${journey.destinationStationCode} — $it"
+                        "${journey.destinationStationCode} · $it"
                     }
                     ?: journey.destinationStationCode,
 
@@ -927,13 +1893,17 @@ private fun JourneyDetailsContent(
                     .titleLarge
         )
 
+
         Spacer(
             modifier =
                 Modifier.height(24.dp)
         )
 
+
         DetailRow(
-            label = "Status",
+            label =
+                "Status",
+
             value =
                 journey.state
                     .replaceFirstChar {
@@ -941,68 +1911,110 @@ private fun JourneyDetailsContent(
                     }
         )
 
-        DetailRow(
-            label = "Journey date",
-            value =
-                journey.journeyDate
-        )
 
         DetailRow(
-            label = "Destination",
+            label =
+                "Journey date",
+
+            value =
+                formatJourneyDate(
+                    journey.journeyDate
+                )
+        )
+
+
+        DetailRow(
+            label =
+                "Destination",
+
             value =
                 journey.destinationStationCode
         )
 
+
         journey.destinationStationName
+            ?.takeIf {
+                it.isNotBlank()
+            }
             ?.let {
+
                 DetailRow(
                     label =
                         "Station",
+
                     value =
                         it
                 )
             }
 
+
         journey.expectedArrival
+            ?.takeIf {
+                it.isNotBlank()
+            }
             ?.let {
+
                 DetailRow(
                     label =
                         "Expected arrival",
+
                     value =
-                        it
+                        formatIstDateTime(it)
                 )
             }
+
 
         journey.delayMinutes
             ?.let {
+
                 DetailRow(
                     label =
                         "Delay",
+
                     value =
-                        "$it minutes"
+                        when {
+                            it > 0 ->
+                                "$it min late"
+
+                            it < 0 ->
+                                "${-it} min early"
+
+                            else ->
+                                "On time"
+                        }
                 )
             }
 
+
         journey.nextAlert
+            ?.takeIf {
+                it.isNotBlank()
+            }
             ?.let {
+
                 DetailRow(
                     label =
                         "Next alert",
+
                     value =
-                        it
+                        formatIstDateTime(it)
                 )
             }
+
 
         if (
             error != null
         ) {
+
             Spacer(
                 modifier =
                     Modifier.height(16.dp)
             )
 
             Text(
-                text = error,
+                text =
+                    error,
+
                 color =
                     MaterialTheme
                         .colorScheme
@@ -1010,38 +2022,57 @@ private fun JourneyDetailsContent(
             )
         }
 
+
         Spacer(
             modifier =
                 Modifier.height(32.dp)
         )
 
+
         if (
             journey.state == "scheduled"
         ) {
+
             OutlinedButton(
-                onClick = onCancel,
-                enabled = !cancelling,
+
+                onClick =
+                    onCancel,
+
+                enabled =
+                    !cancelling,
+
                 modifier =
                     Modifier.fillMaxWidth()
             ) {
+
                 if (cancelling) {
+
                     CircularProgressIndicator(
+
                         modifier =
-                            Modifier.height(20.dp)
+                            Modifier.height(
+                                20.dp
+                            )
                     )
+
                 } else {
-                    Text("Cancel Journey")
+
+                    Text(
+                        "Cancel Journey"
+                    )
                 }
             }
         }
     }
 }
 
+
 @Composable
 private fun DetailRow(
     label: String,
     value: String
 ) {
+
     Column(
         modifier =
             Modifier
@@ -1052,20 +2083,26 @@ private fun DetailRow(
     ) {
 
         Text(
-            text = label,
+            text =
+                label,
+
             style =
                 MaterialTheme
                     .typography
                     .labelLarge
         )
 
+
         Spacer(
             modifier =
                 Modifier.height(2.dp)
         )
 
+
         Text(
-            text = value,
+            text =
+                value,
+
             style =
                 MaterialTheme
                     .typography
@@ -1074,6 +2111,7 @@ private fun DetailRow(
     }
 }
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddJourneyScreen(
@@ -1081,32 +2119,67 @@ private fun AddJourneyScreen(
     onCreated: () -> Unit,
     onCancel: () -> Unit
 ) {
-    var trainQuery by remember { mutableStateOf("") }
+
+    var trainQuery by remember {
+        mutableStateOf("")
+    }
+
     var trainSuggestions by remember {
-        mutableStateOf<List<TrainSuggestion>>(emptyList())
+        mutableStateOf<List<TrainSuggestion>>(
+            emptyList()
+        )
     }
+
     var selectedTrain by remember {
-        mutableStateOf<TrainSuggestion?>(null)
+        mutableStateOf<TrainSuggestion?>(
+            null
+        )
     }
 
-    var stationQuery by remember { mutableStateOf("") }
+
+    var stationQuery by remember {
+        mutableStateOf("")
+    }
+
     var stationSuggestions by remember {
-        mutableStateOf<List<StationSuggestion>>(emptyList())
+        mutableStateOf<List<StationSuggestion>>(
+            emptyList()
+        )
     }
+
     var selectedStation by remember {
-        mutableStateOf<StationSuggestion?>(null)
+        mutableStateOf<StationSuggestion?>(
+            null
+        )
     }
 
-    var journeyDate by remember { mutableStateOf("") }
-    var showDatePicker by remember { mutableStateOf(false) }
 
-    var trainExpanded by remember { mutableStateOf(false) }
-    var stationExpanded by remember { mutableStateOf(false) }
+    var journeyDate by remember {
+        mutableStateOf("")
+    }
 
-    var trainSearching by remember { mutableStateOf(false) }
+    var showDatePicker by remember {
+        mutableStateOf(false)
+    }
+
+
+    var trainExpanded by remember {
+        mutableStateOf(false)
+    }
+
+    var stationExpanded by remember {
+        mutableStateOf(false)
+    }
+
+
+    var trainSearching by remember {
+        mutableStateOf(false)
+    }
+
     var stationSearching by remember {
         mutableStateOf(false)
     }
+
 
     var loading by remember {
         mutableStateOf(false)
@@ -1116,301 +2189,470 @@ private fun AddJourneyScreen(
         mutableStateOf<String?>(null)
     }
 
-    /*
-     * Train autocomplete
-     */
-    LaunchedEffect(trainQuery) {
-        if (selectedTrain != null) {
+
+    LaunchedEffect(
+        trainQuery
+    ) {
+
+        if (
+            selectedTrain != null
+        ) {
             return@LaunchedEffect
         }
 
-        val query = trainQuery.trim()
+        val query =
+            trainQuery.trim()
 
-        if (query.isEmpty()) {
-            trainSuggestions = emptyList()
-            trainExpanded = false
+        if (
+            query.isEmpty()
+        ) {
+
+            trainSuggestions =
+                emptyList()
+
+            trainExpanded =
+                false
+
             return@LaunchedEffect
         }
 
         delay(300)
 
-        trainSearching = true
+        trainSearching =
+            true
 
         JourneyLookupApi.searchTrains(
-            query = query,
+
+            query =
+                query,
 
             onSuccess = {
-                trainSuggestions = it
-                trainSearching = false
-                trainExpanded = true
+
+                trainSuggestions =
+                    it
+
+                trainSearching =
+                    false
+
+                trainExpanded =
+                    true
             },
 
             onError = {
-                trainSearching = false
-                trainSuggestions = emptyList()
+
+                trainSearching =
+                    false
+
+                trainSuggestions =
+                    emptyList()
+
+                error =
+                    it
             }
         )
     }
 
-    /*
-     * Station autocomplete
-     */
-    LaunchedEffect(stationQuery) {
-        if (selectedStation != null) {
+
+    LaunchedEffect(
+        stationQuery
+    ) {
+
+        if (
+            selectedStation != null
+        ) {
             return@LaunchedEffect
         }
 
-        val query = stationQuery.trim()
+        val query =
+            stationQuery.trim()
 
-        if (query.isEmpty()) {
-            stationSuggestions = emptyList()
-            stationExpanded = false
+        if (
+            query.isEmpty()
+        ) {
+
+            stationSuggestions =
+                emptyList()
+
+            stationExpanded =
+                false
+
             return@LaunchedEffect
         }
 
         delay(300)
 
-        stationSearching = true
+        stationSearching =
+            true
 
         JourneyLookupApi.searchStations(
-            query = query,
+
+            query =
+                query,
 
             onSuccess = {
-                stationSuggestions = it
-                stationSearching = false
-                stationExpanded = true
+
+                stationSuggestions =
+                    it
+
+                stationSearching =
+                    false
+
+                stationExpanded =
+                    true
             },
 
             onError = {
-                stationSearching = false
-                stationSuggestions = emptyList()
+
+                stationSearching =
+                    false
+
+                stationSuggestions =
+                    emptyList()
+
+                error =
+                    it
             }
         )
     }
 
-    /*
-     * Date picker
-     */
+
     if (showDatePicker) {
-        val todayMillis =
-            remember {
-                java.util.Calendar
-                    .getInstance()
-                    .apply {
-                        set(
-                            java.util.Calendar.HOUR_OF_DAY,
-                            0
-                        )
-                        set(
-                            java.util.Calendar.MINUTE,
-                            0
-                        )
-                        set(
-                            java.util.Calendar.SECOND,
-                            0
-                        )
-                        set(
-                            java.util.Calendar.MILLISECOND,
-                            0
-                        )
-                    }
-                    .timeInMillis
-            }
 
-        val datePickerState =
-            rememberDatePickerState(
-                initialSelectedDateMillis =
-                    todayMillis,
+    val indiaZone =
+        ZoneId.of("Asia/Kolkata")
 
-                selectableDates =
-                    object :
-                        androidx.compose.material3
-                            .SelectableDates {
-
-                        override fun
-                        isSelectableDate(
-                            utcTimeMillis: Long
-                        ): Boolean {
-                            return utcTimeMillis >=
-                                todayMillis
-                        }
-                    }
+    val todayIndia =
+        remember {
+            LocalDate.now(
+                indiaZone
             )
+        }
 
-        DatePickerDialog(
-            onDismissRequest = {
-                showDatePicker = false
-            },
+    /*
+     * Material 3 DatePicker represents selected
+     * calendar dates using UTC-based millis.
+     *
+     * Therefore we compare calendar dates, not
+     * local timezone millis.
+     */
+    val todayUtcMillis =
+        remember(todayIndia) {
+            todayIndia
+                .atStartOfDay(
+                    ZoneId.of("UTC")
+                )
+                .toInstant()
+                .toEpochMilli()
+        }
 
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val selected =
-                            datePickerState
-                                .selectedDateMillis
+    val datePickerState =
+        rememberDatePickerState(
+            initialSelectedDateMillis =
+                todayUtcMillis,
 
-                        if (selected != null) {
-                            val formatter =
-                                java.text.SimpleDateFormat(
-                                    "yyyy-MM-dd",
-                                    java.util.Locale.US
+            selectableDates =
+                object :
+                    androidx.compose.material3
+                        .SelectableDates {
+
+                    override fun
+                    isSelectableDate(
+                        utcTimeMillis: Long
+                    ): Boolean {
+
+                        val selectedDate =
+                            Instant
+                                .ofEpochMilli(
+                                    utcTimeMillis
                                 )
-
-                            formatter.timeZone =
-                                java.util.TimeZone
-                                    .getTimeZone("UTC")
-
-                            journeyDate =
-                                formatter.format(
-                                    java.util.Date(
-                                        selected
-                                    )
+                                .atZone(
+                                    ZoneId.of("UTC")
                                 )
+                                .toLocalDate()
+
+                        /*
+                         * Allow:
+                         *
+                         * today       ✅
+                         * tomorrow    ✅
+                         * future      ✅
+                         *
+                         * yesterday   ❌
+                         * older       ❌
+                         */
+                        return !selectedDate
+                            .isBefore(todayIndia)
+                    }
+                }
+        )
+
+    DatePickerDialog(
+        onDismissRequest = {
+            showDatePicker = false
+        },
+
+        confirmButton = {
+            TextButton(
+                onClick = {
+
+                    val selectedMillis =
+                        datePickerState
+                            .selectedDateMillis
+
+                    if (
+                        selectedMillis != null
+                    ) {
+
+                        val selectedDate =
+                            Instant
+                                .ofEpochMilli(
+                                    selectedMillis
+                                )
+                                .atZone(
+                                    ZoneId.of("UTC")
+                                )
+                                .toLocalDate()
+
+                        /*
+                         * Defensive validation.
+                         */
+                        if (
+                            selectedDate
+                                .isBefore(todayIndia)
+                        ) {
+
+                            error =
+                                "Please select today or a future date."
+
+                            return@TextButton
                         }
 
-                        showDatePicker = false
+                        journeyDate =
+                            selectedDate.toString()
+
                         error = null
                     }
-                ) {
-                    Text("OK")
-                }
-            },
 
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showDatePicker = false
-                    }
-                ) {
-                    Text("Cancel")
+                    showDatePicker = false
                 }
+            ) {
+                Text("OK")
             }
-        ) {
-            DatePicker(
-                state = datePickerState
-            )
+        },
+
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    showDatePicker = false
+                }
+            ) {
+                Text("Cancel")
+            }
         }
+    ) {
+        DatePicker(
+            state = datePickerState
+        )
     }
+}
+
 
     Scaffold(
+
         topBar = {
+
             TopAppBar(
+
                 title = {
-                    Text("Add Journey")
+
+                    Text(
+                        "Add Journey"
+                    )
                 }
             )
         }
+
     ) { innerPadding ->
 
         Column(
+
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(
+                        innerPadding
+                    )
                     .verticalScroll(
                         rememberScrollState()
                     )
                     .padding(20.dp),
 
             verticalArrangement =
-                Arrangement.spacedBy(16.dp)
+                Arrangement.spacedBy(
+                    16.dp
+                )
         ) {
 
             Text(
                 text =
                     "Tell us about your journey",
+
                 style =
                     MaterialTheme
                         .typography
                         .headlineSmall,
+
                 fontWeight =
                     FontWeight.Bold
             )
+
 
             Text(
                 text =
                     "Choose your train, travel date and destination. We'll take care of the rest."
             )
 
-            /*
-             * TRAIN
-             */
-            if (selectedTrain == null) {
 
-                ExposedDropdownMenuBox(
-                    expanded = trainExpanded,
-                    onExpandedChange = {
+            ExposedDropdownMenuBox(
+
+                expanded =
+                    trainExpanded,
+
+                onExpandedChange = {
+
+                    if (
+                        trainSuggestions
+                            .isNotEmpty()
+                    ) {
                         trainExpanded =
                             !trainExpanded
                     }
+                }
+
+            ) {
+
+                OutlinedTextField(
+
+                    value =
+                        if (
+                            selectedTrain != null
+                        ) {
+                            selectedTrain!!.number
+                        } else {
+                            trainQuery
+                        },
+
+                    onValueChange = {
+
+                        selectedTrain =
+                            null
+
+                        trainQuery =
+                            it
+
+                        error =
+                            null
+                    },
+
+                    label = {
+
+                        Text(
+                            "Train"
+                        )
+                    },
+
+                    placeholder = {
+
+                        Text(
+                            "Search number or train name"
+                        )
+                    },
+
+                    leadingIcon = {
+
+                        Text(
+                            "🔍"
+                        )
+                    },
+
+                    trailingIcon = {
+
+                        if (
+                            trainSearching
+                        ) {
+
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.height(
+                                        18.dp
+                                    )
+                            )
+
+                        } else {
+
+                            ExposedDropdownMenuDefaults
+                                .TrailingIcon(
+                                    expanded =
+                                        trainExpanded
+                                )
+                        }
+                    },
+
+                    singleLine =
+                        true,
+
+                    modifier =
+                        Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                )
+
+
+                ExposedDropdownMenu(
+
+                    expanded =
+                        trainExpanded,
+
+                    onDismissRequest = {
+
+                        trainExpanded =
+                            false
+                    }
                 ) {
 
-                    OutlinedTextField(
-                        value = trainQuery,
-
-                        onValueChange = {
-                            selectedTrain = null
-                            trainQuery = it
-                            error = null
-                        },
-
-                        label = {
-                            Text("Train")
-                        },
-
-                        placeholder = {
-                            Text(
-                                "Search number or train name"
-                            )
-                        },
-
-                        leadingIcon = {
-                            Text("🔍")
-                        },
-
-                        trailingIcon = {
-                            if (trainSearching) {
-                                CircularProgressIndicator(
-                                    modifier =
-                                        Modifier
-                                            .height(18.dp)
-                                )
-                            } else {
-                                ExposedDropdownMenuDefaults
-                                    .TrailingIcon(
-                                        expanded =
-                                            trainExpanded
-                                    )
-                            }
-                        },
-
-                        singleLine = true,
-
-                        modifier =
-                            Modifier
-                                .menuAnchor()
-                                .fillMaxWidth()
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = trainExpanded &&
-                            trainSuggestions.isNotEmpty(),
-
-                        onDismissRequest = {
-                            trainExpanded = false
-                        }
+                    if (
+                        trainSuggestions.isEmpty()
                     ) {
 
+                        DropdownMenuItem(
+
+                            text = {
+
+                                Text(
+                                    "No matching trains found"
+                                )
+                            },
+
+                            onClick = {}
+                        )
+
+                    } else {
+
                         trainSuggestions
-                            .forEachIndexed { index, train ->
+                            .forEachIndexed {
+                                index,
+                                train ->
 
                                 DropdownMenuItem(
+
                                     text = {
+
                                         Column {
 
                                             Text(
                                                 text =
                                                     train.number,
+
                                                 fontWeight =
                                                     FontWeight
                                                         .SemiBold
@@ -1419,6 +2661,7 @@ private fun AddJourneyScreen(
                                             Text(
                                                 text =
                                                     train.name,
+
                                                 style =
                                                     MaterialTheme
                                                         .typography
@@ -1428,6 +2671,7 @@ private fun AddJourneyScreen(
                                     },
 
                                     onClick = {
+
                                         selectedTrain =
                                             train
 
@@ -1437,7 +2681,8 @@ private fun AddJourneyScreen(
                                         trainExpanded =
                                             false
 
-                                        error = null
+                                        error =
+                                            null
                                     }
                                 )
 
@@ -1445,159 +2690,172 @@ private fun AddJourneyScreen(
                                     index <
                                     trainSuggestions.lastIndex
                                 ) {
+
                                     HorizontalDivider()
                                 }
                             }
                     }
                 }
-
-            } else {
-
-                Card(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-
-                        horizontalArrangement =
-                            Arrangement.SpaceBetween,
-
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        Column(
-                            modifier =
-                                Modifier.weight(1f)
-                        ) {
-
-                            Text(
-                                text =
-                                    selectedTrain!!.number,
-                                style =
-                                    MaterialTheme
-                                        .typography
-                                        .titleMedium,
-                                fontWeight =
-                                    FontWeight.Bold
-                            )
-
-                            Text(
-                                text =
-                                    selectedTrain!!.name
-                            )
-                        }
-
-                        TextButton(
-                            onClick = {
-                                selectedTrain = null
-                                trainQuery = ""
-                            }
-                        ) {
-                            Text("Change")
-                        }
-                    }
-                }
             }
 
-            /*
-             * JOURNEY DATE
-             */
+
             OutlinedButton(
+
                 onClick = {
-                    showDatePicker = true
+
+                    showDatePicker =
+                        true
                 },
 
                 modifier =
-                    Modifier.fillMaxWidth()
+                    Modifier.fillMaxWidth(),
+
+                shape =
+                    RoundedCornerShape(
+                        14.dp
+                    )
             ) {
 
                 Text(
-                    if (journeyDate.isBlank()) {
+                    if (
+                        journeyDate.isBlank()
+                    ) {
                         "📅  Select journey date"
                     } else {
-                        "📅  $journeyDate"
+                        "📅  " +
+                            formatJourneyDate(
+                                journeyDate
+                            )
                     }
                 )
             }
 
-            /*
-             * DESTINATION
-             */
-            if (selectedStation == null) {
 
-                ExposedDropdownMenuBox(
-                    expanded = stationExpanded,
-                    onExpandedChange = {
+            ExposedDropdownMenuBox(
+
+                expanded =
+                    stationExpanded,
+
+                onExpandedChange = {
+
+                    if (
+                        stationSuggestions
+                            .isNotEmpty()
+                    ) {
+
                         stationExpanded =
                             !stationExpanded
                     }
+                }
+
+            ) {
+
+                OutlinedTextField(
+
+                    value =
+                        if (
+                            selectedStation != null
+                        ) {
+                            selectedStation!!.code
+                        } else {
+                            stationQuery
+                        },
+
+                    onValueChange = {
+
+                        selectedStation =
+                            null
+
+                        stationQuery =
+                            it
+
+                        error =
+                            null
+                    },
+
+                    label = {
+
+                        Text(
+                            "Destination"
+                        )
+                    },
+
+                    placeholder = {
+
+                        Text(
+                            "Search station name or code"
+                        )
+                    },
+
+                    leadingIcon = {
+
+                        Text(
+                            "📍"
+                        )
+                    },
+
+                    trailingIcon = {
+
+                        if (
+                            stationSearching
+                        ) {
+
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.height(
+                                        18.dp
+                                    )
+                            )
+
+                        } else {
+
+                            ExposedDropdownMenuDefaults
+                                .TrailingIcon(
+                                    expanded =
+                                        stationExpanded
+                                )
+                        }
+                    },
+
+                    singleLine =
+                        true,
+
+                    modifier =
+                        Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                )
+
+
+                ExposedDropdownMenu(
+
+                    expanded =
+                        stationExpanded,
+
+                    onDismissRequest = {
+
+                        stationExpanded =
+                            false
+                    }
                 ) {
 
-                    OutlinedTextField(
-                        value = stationQuery,
-
-                        onValueChange = {
-                            selectedStation = null
-                            stationQuery = it
-                            error = null
-                        },
-
-                        label = {
-                            Text("Destination")
-                        },
-
-                        placeholder = {
-                            Text(
-                                "Search station name or code"
-                            )
-                        },
-
-                        leadingIcon = {
-                            Text("📍")
-                        },
-
-                        trailingIcon = {
-                            if (
-                                stationSearching
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier =
-                                        Modifier
-                                            .height(18.dp)
-                                )
-                            } else {
-                                ExposedDropdownMenuDefaults
-                                    .TrailingIcon(
-                                        expanded =
-                                            stationExpanded
-                                    )
-                            }
-                        },
-
-                        singleLine = true,
-
-                        modifier =
-                            Modifier
-                                .menuAnchor()
-                                .fillMaxWidth()
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded =
-                            stationExpanded &&
-                            stationSuggestions
-                                .isNotEmpty(),
-
-                        onDismissRequest = {
-                            stationExpanded =
-                                false
-                        }
+                    if (
+                        stationSuggestions.isEmpty()
                     ) {
+
+                        DropdownMenuItem(
+
+                            text = {
+
+                                Text(
+                                    "No matching stations found"
+                                )
+                            },
+
+                            onClick = {}
+                        )
+
+                    } else {
 
                         stationSuggestions
                             .forEachIndexed {
@@ -1605,12 +2863,15 @@ private fun AddJourneyScreen(
                                 station ->
 
                                 DropdownMenuItem(
+
                                     text = {
+
                                         Column {
 
                                             Text(
                                                 text =
                                                     station.code,
+
                                                 fontWeight =
                                                     FontWeight.Bold
                                             )
@@ -1618,6 +2879,7 @@ private fun AddJourneyScreen(
                                             Text(
                                                 text =
                                                     station.name,
+
                                                 style =
                                                     MaterialTheme
                                                         .typography
@@ -1627,6 +2889,7 @@ private fun AddJourneyScreen(
                                     },
 
                                     onClick = {
+
                                         selectedStation =
                                             station
 
@@ -1636,80 +2899,33 @@ private fun AddJourneyScreen(
                                         stationExpanded =
                                             false
 
-                                        error = null
+                                        error =
+                                            null
                                     }
                                 )
 
                                 if (
                                     index <
-                                    stationSuggestions
-                                        .lastIndex
+                                    stationSuggestions.lastIndex
                                 ) {
+
                                     HorizontalDivider()
                                 }
                             }
                     }
                 }
-
-            } else {
-
-                Card(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-
-                        horizontalArrangement =
-                            Arrangement.SpaceBetween,
-
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        Column(
-                            modifier =
-                                Modifier.weight(1f)
-                        ) {
-
-                            Text(
-                                text =
-                                    selectedStation!!.code,
-                                style =
-                                    MaterialTheme
-                                        .typography
-                                        .titleMedium,
-                                fontWeight =
-                                    FontWeight.Bold
-                            )
-
-                            Text(
-                                text =
-                                    selectedStation!!.name
-                            )
-                        }
-
-                        TextButton(
-                            onClick = {
-                                selectedStation =
-                                    null
-
-                                stationQuery =
-                                    ""
-                            }
-                        ) {
-                            Text("Change")
-                        }
-                    }
-                }
             }
 
-            if (error != null) {
+
+            if (
+                error != null
+            ) {
+
                 Text(
-                    text = error!!,
+
+                    text =
+                        error!!,
+
                     color =
                         MaterialTheme
                             .colorScheme
@@ -1717,29 +2933,44 @@ private fun AddJourneyScreen(
                 )
             }
 
+
             Spacer(
                 modifier =
                     Modifier.height(8.dp)
             )
 
+
             Row(
+
                 modifier =
                     Modifier.fillMaxWidth(),
 
                 horizontalArrangement =
-                    Arrangement.spacedBy(12.dp)
+                    Arrangement.spacedBy(
+                        12.dp
+                    )
             ) {
 
                 OutlinedButton(
-                    onClick = onCancel,
-                    enabled = !loading,
+
+                    onClick =
+                        onCancel,
+
+                    enabled =
+                        !loading,
+
                     modifier =
                         Modifier.weight(1f)
                 ) {
-                    Text("Cancel")
+
+                    Text(
+                        "Cancel"
+                    )
                 }
 
+
                 Button(
+
                     onClick = {
 
                         val train =
@@ -1748,31 +2979,48 @@ private fun AddJourneyScreen(
                         val station =
                             selectedStation
 
-                        if (train == null) {
+                        if (
+                            train == null
+                        ) {
+
                             error =
                                 "Please select a train."
+
                             return@Button
                         }
 
                         if (
                             journeyDate.isBlank()
                         ) {
+
                             error =
                                 "Please select a journey date."
+
                             return@Button
                         }
 
-                        if (station == null) {
+                        if (
+                            station == null
+                        ) {
+
                             error =
                                 "Please select a destination."
+
                             return@Button
                         }
 
-                        loading = true
-                        error = null
+
+                        loading =
+                            true
+
+                        error =
+                            null
+
 
                         JourneyApi.createJourney(
-                            context = context,
+
+                            context =
+                                context,
 
                             trainNumber =
                                 train.number,
@@ -1784,34 +3032,89 @@ private fun AddJourneyScreen(
                                 station.code,
 
                             onSuccess = {
-                                loading = false
+
+                                loading =
+                                    false
+
                                 onCreated()
                             },
 
                             onError = {
-                                loading = false
-                                error = it
+
+                                loading =
+                                    false
+
+                                error =
+                                    it
                             }
                         )
                     },
 
-                    enabled = !loading,
+                    enabled =
+                        !loading &&
+                        selectedTrain != null &&
+                        journeyDate.isNotBlank() &&
+                        selectedStation != null,
 
                     modifier =
                         Modifier.weight(1f)
                 ) {
 
                     if (loading) {
+
                         CircularProgressIndicator(
+
                             modifier =
-                                Modifier
-                                    .height(20.dp)
+                                Modifier.height(
+                                    20.dp
+                                )
                         )
+
                     } else {
-                        Text("Create Journey")
+
+                        Text(
+                            "Create Journey"
+                        )
                     }
                 }
             }
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(24.dp)
+            )
         }
+    }
+}
+
+
+/*
+ * Uses UTC because Material 3 DatePicker returns
+ * the selected calendar date represented at UTC midnight.
+ * This keeps the YYYY-MM-DD value stable for the backend.
+ */
+private class SimpleDateFormatter {
+
+    private val formatter =
+        java.text.SimpleDateFormat(
+            "yyyy-MM-dd",
+            Locale.US
+        ).apply {
+
+            timeZone =
+                java.util.TimeZone
+                    .getTimeZone(
+                        "UTC"
+                    )
+        }
+
+    fun format(
+        millis: Long
+    ): String {
+
+        return formatter.format(
+            java.util.Date(millis)
+        )
     }
 }

@@ -15,10 +15,13 @@ function json(
 
 async function authenticate(request: Request) {
   try {
-    const { auth } = await import("../src/api-runtime.js");
+    const { auth } =
+      await import("../src/api-runtime.js");
 
     return await auth.authenticate({
-      headers: Object.fromEntries(request.headers.entries()),
+      headers: Object.fromEntries(
+        request.headers.entries()
+      ),
     });
   } catch {
     throw new JourneyServiceError(
@@ -60,11 +63,24 @@ function errorResponse(error: unknown) {
     {
       error: {
         code: "INTERNAL_ERROR",
-        message: "An unexpected error occurred.",
+        message:
+          "An unexpected error occurred.",
       },
     },
     500
   );
+}
+
+function getTodayIndia(): string {
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }
+  ).format(new Date());
 }
 
 export async function GET(
@@ -108,7 +124,8 @@ export async function POST(
         {
           error: {
             code: "INVALID_JSON",
-            message: "Request body must be valid JSON.",
+            message:
+              "Request body must be valid JSON.",
           },
         },
         400
@@ -149,6 +166,24 @@ export async function POST(
       );
     }
 
+    const todayIndia =
+      getTodayIndia();
+
+    if (
+      body.journeyDate < todayIndia
+    ) {
+      return json(
+        {
+          error: {
+            code: "INVALID_JOURNEY_DATE",
+            message:
+              "Journey date must be today or a future date.",
+          },
+        },
+        400
+      );
+    }
+
     if (
       typeof body.destinationStationCode !==
         "string" ||
@@ -173,12 +208,20 @@ export async function POST(
       await import("../src/api-runtime.js");
 
     const journey =
-      await journeyService.create(userId, {
-        trainNumber: body.trainNumber,
-        journeyDate: body.journeyDate,
-        destinationStationCode:
-          body.destinationStationCode.toUpperCase(),
-      });
+      await journeyService.create(
+        userId,
+        {
+          trainNumber:
+            body.trainNumber,
+
+          journeyDate:
+            body.journeyDate,
+
+          destinationStationCode:
+            body.destinationStationCode
+              .toUpperCase(),
+        }
+      );
 
     return json(
       await journeyService.response(journey),
