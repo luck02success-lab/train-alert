@@ -14,7 +14,7 @@ import type {
   FcmSendResult,
 } from "./fcm.js";
 
-function getFirebaseApp() {
+export function getFirebaseApp() {
   const existing =
     getApps()[0];
 

@@ -9,7 +9,7 @@ import {
 } from "./device-repository.js";
 
 import {
-  DevelopmentHeaderAuthProvider,
+  FirebaseAuthProvider,
 } from "./auth.js";
 
 import {
@@ -98,4 +98,6 @@ export const alertWorker =
   );
 
 export const auth =
-  new DevelopmentHeaderAuthProvider();
+  new FirebaseAuthProvider(
+    userRepository
+  );

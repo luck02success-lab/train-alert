@@ -18,17 +18,8 @@ object DeviceRegistrationManager {
     private const val TAG =
         "DeviceRegistration"
 
-    private const val PREFS_NAME =
-        "train_alert"
-
-    private const val USER_ID_KEY =
-        "user_id"
-
     private val mainHandler =
         Handler(Looper.getMainLooper())
-
-    private val userLock =
-        Any()
 
     private val httpClient =
         OkHttpClient.Builder()
@@ -60,22 +51,29 @@ object DeviceRegistrationManager {
     ) {
         executor.execute {
             try {
-                val userId =
-                    getOrCreateUserId(context)
+                val firebaseUser =
+                    FirebaseAuthManager
+                        .ensureAuthenticated()
 
                 mainHandler.post {
-                    onSuccess(userId)
+                    onSuccess(
+                        firebaseUser.uid
+                    )
                 }
             } catch (error: Exception) {
                 Log.e(
                     TAG,
-                    "Unable to create/retrieve user",
+                    "Unable to authenticate user",
                     error
                 )
 
                 mainHandler.post {
                     onError(
-                        errorMessage(error)
+                        error.message
+                            ?.takeIf {
+                                it.isNotBlank()
+                            }
+                            ?: "Unable to initialize Train Alert."
                     )
                 }
             }
@@ -90,7 +88,7 @@ object DeviceRegistrationManager {
             .token
             .addOnSuccessListener { token ->
                 registerToken(
-                    context.applicationContext,
+                    context,
                     token
                 )
             }
@@ -117,8 +115,9 @@ object DeviceRegistrationManager {
 
         executor.execute {
             try {
-                val userId =
-                    getOrCreateUserId(context)
+                val idToken =
+                    FirebaseAuthManager
+                        .getIdToken()
 
                 val payload =
                     JSONObject()
@@ -137,8 +136,8 @@ object DeviceRegistrationManager {
                             "${BuildConfig.API_BASE_URL}/api/devices"
                         )
                         .header(
-                            "x-user-id",
-                            userId
+                            "Authorization",
+                            "Bearer $idToken"
                         )
                         .header(
                             "Content-Type",
@@ -185,110 +184,5 @@ object DeviceRegistrationManager {
                 )
             }
         }
-    }
-
-    private fun getOrCreateUserId(
-        context: Context
-    ): String {
-        synchronized(userLock) {
-            val preferences =
-                context.getSharedPreferences(
-                    PREFS_NAME,
-                    Context.MODE_PRIVATE
-                )
-
-            val existing =
-                preferences.getString(
-                    USER_ID_KEY,
-                    null
-                )
-
-            if (!existing.isNullOrBlank()) {
-                return existing
-            }
-
-            val userId =
-                createAnonymousUser()
-
-            preferences
-                .edit()
-                .putString(
-                    USER_ID_KEY,
-                    userId
-                )
-                .apply()
-
-            Log.i(
-                TAG,
-                "Created anonymous Train Alert user"
-            )
-
-            return userId
-        }
-    }
-
-    private fun createAnonymousUser(): String {
-        val request =
-            Request.Builder()
-                .url(
-                    "${BuildConfig.API_BASE_URL}/api/users"
-                )
-                .header(
-                    "Content-Type",
-                    "application/json"
-                )
-                .post(
-                    "{}"
-                        .toRequestBody(
-                            jsonMediaType
-                        )
-                )
-                .build()
-
-        httpClient
-            .newCall(request)
-            .execute()
-            .use { response ->
-
-                val body =
-                    response.body?.string()
-
-                if (!response.isSuccessful) {
-                    throw IllegalStateException(
-                        "User creation failed: " +
-                            "${response.code}"
-                    )
-                }
-
-                if (body.isNullOrBlank()) {
-                    throw IllegalStateException(
-                        "User creation returned an empty response."
-                    )
-                }
-
-                val json =
-                    JSONObject(body)
-
-                val userId =
-                    json.optString("id")
-
-                if (userId.isBlank()) {
-                    throw IllegalStateException(
-                        "User creation response did not contain an id."
-                    )
-                }
-
-                return userId
-            }
-    }
-
-    private fun errorMessage(
-        error: Exception
-    ): String {
-        return error.message
-            ?.takeIf {
-                it.isNotBlank()
-            }
-            ?: "Unable to initialize Train Alert."
     }
 }

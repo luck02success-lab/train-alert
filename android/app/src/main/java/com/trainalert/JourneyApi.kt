@@ -34,12 +34,6 @@ object JourneyApi {
     private const val TAG =
         "JourneyApi"
 
-    private const val PREFS_NAME =
-        "train_alert"
-
-    private const val USER_ID_KEY =
-        "user_id"
-
     private val mainHandler =
         Handler(Looper.getMainLooper())
 
@@ -73,16 +67,9 @@ object JourneyApi {
     ) {
         executor.execute {
             try {
-                val userId =
-                    getUserId(context)
-
-                if (userId == null) {
-                    postError(
-                        onError,
-                        "User is not registered yet."
-                    )
-                    return@execute
-                }
+                val idToken =
+                    FirebaseAuthManager
+                        .getIdToken()
 
                 val request =
                     Request.Builder()
@@ -90,8 +77,8 @@ object JourneyApi {
                             "${BuildConfig.API_BASE_URL}/api/journeys"
                         )
                         .header(
-                            "x-user-id",
-                            userId
+                            "Authorization",
+                            "Bearer $idToken"
                         )
                         .get()
                         .build()
@@ -157,16 +144,9 @@ object JourneyApi {
     ) {
         executor.execute {
             try {
-                val userId =
-                    getUserId(context)
-
-                if (userId == null) {
-                    postError(
-                        onError,
-                        "User is not registered yet."
-                    )
-                    return@execute
-                }
+                val idToken =
+                    FirebaseAuthManager
+                        .getIdToken()
 
                 val request =
                     Request.Builder()
@@ -174,8 +154,8 @@ object JourneyApi {
                             "${BuildConfig.API_BASE_URL}/api/journeys/$journeyId"
                         )
                         .header(
-                            "x-user-id",
-                            userId
+                            "Authorization",
+                            "Bearer $idToken"
                         )
                         .get()
                         .build()
@@ -245,16 +225,9 @@ object JourneyApi {
     ) {
         executor.execute {
             try {
-                val userId =
-                    getUserId(context)
-
-                if (userId == null) {
-                    postError(
-                        onError,
-                        "User is not registered yet."
-                    )
-                    return@execute
-                }
+                val idToken =
+                    FirebaseAuthManager
+                        .getIdToken()
 
                 val payload =
                     JSONObject()
@@ -278,8 +251,8 @@ object JourneyApi {
                             "${BuildConfig.API_BASE_URL}/api/journeys"
                         )
                         .header(
-                            "x-user-id",
-                            userId
+                            "Authorization",
+                            "Bearer $idToken"
                         )
                         .header(
                             "Content-Type",
@@ -357,16 +330,9 @@ object JourneyApi {
     ) {
         executor.execute {
             try {
-                val userId =
-                    getUserId(context)
-
-                if (userId == null) {
-                    postError(
-                        onError,
-                        "User is not registered yet."
-                    )
-                    return@execute
-                }
+                val idToken =
+                    FirebaseAuthManager
+                        .getIdToken()
 
                 val request =
                     Request.Builder()
@@ -374,8 +340,8 @@ object JourneyApi {
                             "${BuildConfig.API_BASE_URL}/api/journeys/$journeyId"
                         )
                         .header(
-                            "x-user-id",
-                            userId
+                            "Authorization",
+                            "Bearer $idToken"
                         )
                         .delete()
                         .build()
@@ -433,20 +399,6 @@ object JourneyApi {
                 )
             }
         }
-    }
-
-    private fun getUserId(
-        context: Context
-    ): String? {
-        return context
-            .getSharedPreferences(
-                PREFS_NAME,
-                Context.MODE_PRIVATE
-            )
-            .getString(
-                USER_ID_KEY,
-                null
-            )
     }
 
     private fun parseJourneyList(
