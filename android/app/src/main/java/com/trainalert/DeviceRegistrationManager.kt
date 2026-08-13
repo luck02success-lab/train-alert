@@ -1,9 +1,11 @@
 package com.trainalert
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import com.google.firebase.messaging.FirebaseMessaging
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.messaging.FirebaseMessaging
 import java.util.concurrent.Executors
 
 object DeviceRegistrationManager {
@@ -14,6 +16,15 @@ object DeviceRegistrationManager {
     private val executor =
         Executors.newSingleThreadExecutor()
 
+    private val mainHandler =
+        Handler(
+            Looper.getMainLooper()
+        )
+
+    /**
+     * Authenticates the Firebase user and makes sure
+     * the current FCM token is registered with the backend.
+     */
     fun ensureUser(
         context: Context,
         onSuccess: () -> Unit,
@@ -24,25 +35,39 @@ object DeviceRegistrationManager {
                 FirebaseAuthManager
                     .ensureAuthenticated()
 
+                registerCurrentTokenInternal(
+                    context
+                )
+
                 postSuccess(
                     onSuccess
                 )
             } catch (error: Exception) {
                 Log.e(
                     TAG,
-                    "Firebase authentication failed",
+                    "Device initialization failed",
                     error
                 )
 
                 postError(
                     onError,
                     error.message
-                        ?: "Unable to authenticate with Firebase."
+                        ?.takeIf {
+                            it.isNotBlank()
+                        }
+                        ?: "Unable to initialize Train Alert."
                 )
             }
         }
     }
 
+    /**
+     * Gets the current FCM token and registers it
+     * with the backend.
+     *
+     * This is used when the application starts and
+     * notification permission is already available.
+     */
     fun registerCurrentToken(
         context: Context
     ) {
@@ -51,22 +76,8 @@ object DeviceRegistrationManager {
                 FirebaseAuthManager
                     .ensureAuthenticated()
 
-                val token =
-                    Tasks.await(
-                        FirebaseMessaging
-                            .getInstance()
-                            .token
-                    )
-
-                if (token.isNullOrBlank()) {
-                    throw IllegalStateException(
-                        "Firebase returned an empty FCM token."
-                    )
-                }
-
-                registerTokenInternal(
-                    context,
-                    token
+                registerCurrentTokenInternal(
+                    context
                 )
             } catch (error: Exception) {
                 Log.e(
@@ -78,10 +89,25 @@ object DeviceRegistrationManager {
         }
     }
 
+    /**
+     * Registers a newly refreshed FCM token.
+     *
+     * Called from FirebaseMessagingService when
+     * Firebase rotates the device token.
+     */
     fun registerToken(
         context: Context,
         token: String
     ) {
+        if (token.isBlank()) {
+            Log.w(
+                TAG,
+                "Ignoring empty FCM token"
+            )
+
+            return
+        }
+
         executor.execute {
             try {
                 FirebaseAuthManager
@@ -99,6 +125,28 @@ object DeviceRegistrationManager {
                 )
             }
         }
+    }
+
+    private fun registerCurrentTokenInternal(
+        context: Context
+    ) {
+        val token =
+            Tasks.await(
+                FirebaseMessaging
+                    .getInstance()
+                    .token
+            )
+
+        if (token.isNullOrBlank()) {
+            throw IllegalStateException(
+                "Firebase returned an empty FCM token."
+            )
+        }
+
+        registerTokenInternal(
+            context,
+            token
+        )
     }
 
     private fun registerTokenInternal(
@@ -131,9 +179,7 @@ object DeviceRegistrationManager {
     private fun postSuccess(
         callback: () -> Unit
     ) {
-        android.os.Handler(
-            android.os.Looper.getMainLooper()
-        ).post {
+        mainHandler.post {
             callback()
         }
     }
@@ -142,9 +188,7 @@ object DeviceRegistrationManager {
         callback: (String) -> Unit,
         message: String
     ) {
-        android.os.Handler(
-            android.os.Looper.getMainLooper()
-        ).post {
+        mainHandler.post {
             callback(message)
         }
     }
