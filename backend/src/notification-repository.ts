@@ -177,7 +177,10 @@ export class PostgresNotificationRepository
                     'pending',
                     'failed'
                   )
-                  AND d.next_attempt_at <= now()
+                  AND (
+                    d.next_attempt_at IS NULL
+                    OR d.next_attempt_at <= now()
+                  )
               )
             )
           ORDER BY
@@ -320,7 +323,10 @@ export class PostgresNotificationRepository
             'pending',
             'failed'
           )
-          AND next_attempt_at <= now()
+          AND (
+            next_attempt_at IS NULL
+            OR next_attempt_at <= now()
+          )
         RETURNING
           attempt_count AS "attemptCount"
         `,
