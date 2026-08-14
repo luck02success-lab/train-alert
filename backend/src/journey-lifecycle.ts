@@ -166,9 +166,54 @@ function stationBoardSaysUpcoming(
   );
 }
 
+function stationBoardSaysCompleted(
+  live: TrainLiveStatus,
+  now: Date
+): boolean {
+  if (
+    live.destinationLiveType !==
+      "departed"
+  ) {
+    return false;
+  }
+
+  const expectedDeparture =
+    parseDate(
+      live.destinationLiveExpectedDeparture
+    );
+
+  /*
+   * A station board explicitly saying "departed" is useful
+   * completion evidence, but only once its departure timestamp
+   * is not in the future.
+   */
+  if (
+    expectedDeparture &&
+    expectedDeparture.getTime() <=
+      now.getTime()
+  ) {
+    return true;
+  }
+
+  /*
+   * If the board says departed but didn't expose a timestamp,
+   * we still treat the destination board state as completion
+   * evidence. The provider has already classified the train as
+   * departed from this station.
+   */
+  if (
+    !expectedDeparture
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function destinationCompletionIsCorroborated(
   live: TrainLiveStatus,
-  stop: TrainLiveStop
+  stop: TrainLiveStop,
+  now: Date
 ): boolean {
   /*
    * If destination is clearly still ahead, then any stale
@@ -184,7 +229,21 @@ function destinationCompletionIsCorroborated(
   }
 
   /*
-   * Actual departure is stronger than actual arrival.
+   * The destination-specific station board is the strongest
+   * destination signal we have.
+   */
+  if (
+    stationBoardSaysCompleted(
+      live,
+      now
+    )
+  ) {
+    return true;
+  }
+
+  /*
+   * Explicit actual departure from the destination is stronger
+   * than actual arrival.
    */
   if (
     stop.actualDeparture
@@ -206,10 +265,6 @@ function destinationCompletionIsCorroborated(
     return true;
   }
 
-  /*
-   * Station board "departed" without actual timestamp is
-   * insufficient on its own; it can be stale.
-   */
   return false;
 }
 
@@ -310,7 +365,8 @@ export function destinationPosition(
 
 function destinationIsActuallyReached(
   stop: TrainLiveStop,
-  live: TrainLiveStatus
+  live: TrainLiveStatus,
+  now: Date
 ): boolean {
   const destinationSequence =
     sequenceOf(
@@ -334,8 +390,8 @@ function destinationIsActuallyReached(
     null;
 
   /*
-   * If the provider says the selected destination is
-   * explicitly upcoming/scheduled, it is NOT reached.
+   * If the provider says the selected destination is explicitly
+   * upcoming/scheduled, it is NOT reached.
    */
   if (
     live.destinationLiveType ===
@@ -347,9 +403,9 @@ function destinationIsActuallyReached(
   }
 
   /*
-   * The train is still before the destination according
-   * to an actual live position. This overrides stale
-   * actualArrival values.
+   * The train is still before the destination according to an
+   * actual live position. This overrides stale actualArrival
+   * values.
    */
   if (
     live.isActualPosition ===
@@ -360,6 +416,25 @@ function destinationIsActuallyReached(
       currentSequence
   ) {
     return false;
+  }
+
+  /*
+   * The destination station's live board explicitly says the
+   * train has departed and the departure is no longer in the
+   * future.
+   *
+   * This is intentionally checked even when sequence information
+   * is missing or inconsistent. It prevents an active journey
+   * from remaining active forever just because route-position
+   * data is incomplete.
+   */
+  if (
+    stationBoardSaysCompleted(
+      live,
+      now
+    )
+  ) {
+    return true;
   }
 
   /*
@@ -396,8 +471,8 @@ function destinationIsActuallyReached(
   }
 
   /*
-   * Explicit actual arrival is only trusted once the
-   * current live position no longer contradicts it.
+   * Explicit actual arrival is only trusted once the current
+   * live position no longer contradicts it.
    */
   if (
     stop.actualArrival !==
@@ -405,18 +480,14 @@ function destinationIsActuallyReached(
     currentSequence !== null &&
     destinationSequence !== null &&
     currentSequence >=
-      destinationSequence &&
-    live.destinationLiveType !==
-      "upcoming" &&
-    live.destinationLiveType !==
-      "scheduled"
+      destinationSequence
   ) {
     return true;
   }
 
   /*
-   * A departed destination plus an actual position beyond
-   * it is sufficient corroboration.
+   * A departed destination plus an actual position beyond it is
+   * sufficient corroboration.
    */
   if (
     live.destinationLiveType ===
@@ -473,7 +544,8 @@ export function destinationEta(
   if (
     destinationIsActuallyReached(
       stop,
-      live
+      live,
+      now
     )
   ) {
     throw new JourneyLifecycleError(
@@ -591,8 +663,7 @@ export function destinationEta(
   }
 
   /*
-   * The important part:
-   * never convert an unresolved timestamp contradiction into
+   * Never convert an unresolved timestamp contradiction into
    * DESTINATION_ALREADY_REACHED.
    */
   throw new JourneyLifecycleError(

@@ -887,5 +887,70 @@ describe(
         ]);
       }
     );
+
+    it(
+  "marks destination reached when destination station board says departed",
+  () => {
+    const stop = {
+      ...baseStops[2]!,
+
+      actualArrival:
+        null,
+
+      actualDeparture:
+        null,
+
+      status:
+        "upcoming",
+    };
+
+    const train = {
+      ...liveTrain,
+
+      currentStationCode:
+        null,
+
+      currentSequence:
+        null,
+
+      nextStationCode:
+        null,
+
+      destinationLiveType:
+        "departed" as const,
+
+      destinationLiveExpectedDeparture:
+        "2026-08-14T14:10:00+05:30",
+
+      destinationLiveExpectedArrival:
+        "2026-08-14T14:05:00+05:30",
+
+      destinationLiveDelayMinutes:
+        10,
+
+      stops: [
+        baseStops[0]!,
+        baseStops[1]!,
+        stop,
+        baseStops[3]!,
+      ],
+    };
+
+    expect(() =>
+      destinationEta(
+        stop,
+        train,
+        new Date(
+          "2026-08-14T14:20:00+05:30"
+        )
+      )
+    ).toThrowError(
+      expect.objectContaining({
+        code:
+          "DESTINATION_ALREADY_REACHED",
+      })
+    );
+  }
+);
   }
 );
