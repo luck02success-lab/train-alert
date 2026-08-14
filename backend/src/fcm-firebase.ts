@@ -67,21 +67,10 @@ export class FirebaseFcmClient
       await getMessaging(app).send({
         token: message.token,
 
-        notification: {
-          title: message.title,
-          body: message.body,
-        },
-
         data: message.data,
 
         android: {
-          notification: {
-            channelId:
-              "train_alerts",
-
-            clickAction:
-              "com.trainalert.OPEN_JOURNEY",
-          },
+          priority: "high",
         },
       });
 
@@ -109,3 +98,4 @@ export class FirebaseFcmClient
     }
   }
 }
+

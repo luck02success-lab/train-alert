@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07111f">
+<meta name="description" content="RailWake keeps an eye on your train journey and alerts you before your stop.">
+<meta property="og:title" content="RailWake — Wake up before your stop">
+<meta property="og:description" content="Timely train-stop alerts that adapt to delays and early running.">
+<title>RailWake — Wake up before your stop</title>
+<style>
+:root{--bg:#07111f;--card:#0d1b2f;--text:#f8fafc;--muted:#b5c0cf;--accent:#38bdf8;--border:rgba(255,255,255,.1)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(circle at 15% 8%,rgba(56,189,248,.18),transparent 28%),linear-gradient(180deg,#07111f,#0a1626);min-height:100vh}
+.wrap{width:min(1060px,calc(100% - 40px));margin:auto}header{padding:28px 0;display:flex;justify-content:space-between;align-items:center}.brand{font-size:25px;font-weight:850;letter-spacing:-.04em}nav{display:flex;gap:22px}nav a{color:var(--muted);text-decoration:none;font-size:14px}
+main{padding:75px 0}.eyebrow{display:inline-block;color:#7dd3fc;background:rgba(125,211,252,.1);border:1px solid rgba(125,211,252,.15);padding:7px 11px;border-radius:999px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+h1{font-size:clamp(50px,8vw,88px);line-height:.97;letter-spacing:-.07em;max-width:850px;margin:20px 0}.lead{max-width:760px;color:var(--muted);font-size:clamp(18px,2.2vw,24px);line-height:1.55}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 20px;border-radius:14px;text-decoration:none;font-weight:800;border:1px solid var(--border)}.primary{background:var(--accent);color:#03121c}.secondary{background:rgba(255,255,255,.04)}
+.card{margin-top:58px;padding:28px;border:1px solid var(--border);border-radius:24px;background:rgba(13,27,47,.72);display:grid;grid-template-columns:1.1fr .9fr;gap:24px}.phone{background:#091423;padding:22px;border-radius:18px;border:1px solid var(--border)}.pill{display:inline-block;color:#7dd3fc;background:rgba(125,211,252,.1);padding:6px 9px;border-radius:999px;font-size:11px;font-weight:800;text-transform:uppercase}.journey{margin-top:18px;background:rgba(255,255,255,.04);padding:20px;border-radius:15px}.journey small{color:var(--muted)}.journey b{display:block;font-size:23px;margin-top:7px}.status{color:#7dd3fc;font-weight:750;margin-top:8px}
+section{padding:70px 0}h2{font-size:40px;letter-spacing:-.05em;margin:0 0 14px}.sub{color:var(--muted);line-height:1.65;max-width:700px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}.feature{padding:24px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.025)}.feature h3{margin:0 0 10px}.feature p{margin:0;color:var(--muted);line-height:1.6}
+.platforms{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:28px}.platform{padding:24px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.025)}.platform h3{margin:0 0 7px}.platform p{color:var(--muted);margin:0 0 18px}.soon{font-weight:800;color:var(--muted)}
+footer{padding:35px 0 50px;border-top:1px solid var(--border);color:var(--muted);font-size:14px}.links{display:flex;gap:18px;flex-wrap:wrap;margin-top:9px}.links a{color:var(--muted);text-decoration:none}
+@media(max-width:760px){nav{display:none}.card,.grid,.platforms{grid-template-columns:1fr}main{padding-top:45px}}
+</style>
+</head>
+<body>
+<header class="wrap">
+  <div class="brand">RailWake</div>
+  <nav><a href="#how">How it works</a><a href="#download">Download</a><a href="/privacy">Privacy</a></nav>
+</header>
+
+<main class="wrap">
+  <span class="eyebrow">Private beta</span>
+  <h1>Wake up before your stop.</h1>
+  <p class="lead">We'll keep an eye on your journey and let you know when it's time to get ready. RailWake adapts your alerts when your train runs late or early.</p>
+  <div class="actions">
+    <a class="btn primary" href="#download">Get RailWake</a>
+    <a class="btn secondary" href="#how">See how it works</a>
+  </div>
+
+  <div class="card">
+    <div class="phone">
+      <span class="pill">Live journey</span>
+      <div class="journey">
+        <small>Train 12584</small>
+        <b>Moradabad</b>
+        <div class="status">Running 12 mins late</div>
+      </div>
+    </div>
+    <div>
+      <h2 style="font-size:30px">Built for one job.</h2>
+      <p class="sub">RailWake isn't another booking or general train-tracking app. It exists to help you avoid missing the station where you need to get off.</p>
+    </div>
+  </div>
+</main>
+
+<section id="how">
+<div class="wrap">
+  <h2>How it works</h2>
+  <p class="sub">Add your journey once. RailWake keeps the destination ETA updated and schedules reminders around the real journey.</p>
+  <div class="grid">
+    <div class="feature"><h3>1. Add your journey</h3><p>Select your train, travel date and destination station.</p></div>
+    <div class="feature"><h3>2. We keep watch</h3><p>RailWake adapts when the train is delayed, early or still waiting to depart.</p></div>
+    <div class="feature"><h3>3. We'll wake you</h3><p>Get timely reminders before your destination, with at least 15 minutes between notifications.</p></div>
+  </div>
+</div>
+</section>
+
+<section id="download">
+<div class="wrap">
+  <h2>Get RailWake</h2>
+  <p class="sub">RailWake is currently in private beta. Android is available now for direct download. iOS is coming soon.</p>
+  <div class="platforms">
+    <div class="platform"><h3>Android</h3><p>Download the latest RailWake beta APK.</p><a class="btn primary" href="/download/railwake.apk">Download APK</a></div>
+    <div class="platform"><h3>iPhone</h3><p>We're working on the iOS version.</p><div class="soon">Coming soon</div></div>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <h2>Don't miss your stop again.</h2>
+  <p class="sub">Your train can be late. It can even run early. RailWake keeps watching the journey so you can relax instead of checking the train every few minutes.</p>
+</div>
+</section>
+
+<footer>
+<div class="wrap">
+  <div>© 2026 RailWake Labs</div>
+  <div class="links"><a href="/privacy">Privacy Policy</a><a href="/delete-account">Delete account</a><a href="mailto:support@railwake.app">Report a problem</a></div>
+</div>
+</footer>
+</body>
+</html>

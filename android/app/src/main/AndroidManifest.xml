@@ -9,6 +9,9 @@
     <uses-permission
         android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <uses-permission
+        android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <application
         android:theme="@style/Theme.TrainAlert"
         android:label="RailWake"
@@ -46,6 +49,13 @@
 
         </activity>
 
+        <activity
+            android:name=".AlarmActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
         <service
             android:name=".TrainAlertFirebaseMessagingService"
             android:exported="false">
@@ -63,6 +73,11 @@
             android:name=".notification.NotificationDismissReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".AlarmSnoozeReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>
+

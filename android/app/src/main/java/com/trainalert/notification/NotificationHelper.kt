@@ -15,9 +15,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
+import com.trainalert.AlarmActivity
 import com.trainalert.MainActivity
 import com.trainalert.R
-
 
 object NotificationHelper {
 
@@ -38,6 +38,15 @@ object NotificationHelper {
 
     private const val EXTRA_JOURNEY_ID =
         "journeyId"
+
+    private const val EXTRA_TITLE =
+        "title"
+
+    private const val EXTRA_BODY =
+        "body"
+
+    private const val EXTRA_OFFSET_MINUTES =
+        "offsetMinutes"
 
     private val VIBRATION_PATTERN =
         longArrayOf(
@@ -120,7 +129,8 @@ object NotificationHelper {
         notificationId: Int,
         title: String,
         body: String,
-        journeyId: String?
+        journeyId: String?,
+        offsetMinutes: Int = 30
     ) {
         if (
             Build.VERSION.SDK_INT >= 33 &&
@@ -166,6 +176,52 @@ object NotificationHelper {
                 context,
                 notificationId,
                 contentIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+            )
+
+        val alarmIntent =
+            Intent(
+                context,
+                AlarmActivity::class.java
+            ).apply {
+
+                flags =
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+
+                putExtra(
+                    AlarmActivity.EXTRA_TITLE,
+                    title
+                )
+
+                putExtra(
+                    AlarmActivity.EXTRA_BODY,
+                    body
+                )
+
+                putExtra(
+                    AlarmActivity.EXTRA_JOURNEY_ID,
+                    journeyId
+                )
+
+                putExtra(
+                    AlarmActivity.EXTRA_NOTIFICATION_ID,
+                    notificationId
+                )
+
+                putExtra(
+                    AlarmActivity.EXTRA_OFFSET_MINUTES,
+                    offsetMinutes
+                )
+            }
+
+        val alarmPendingIntent =
+            PendingIntent.getActivity(
+                context,
+                notificationId + 1,
+                alarmIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or
                     PendingIntent.FLAG_IMMUTABLE
             )
@@ -216,7 +272,11 @@ object NotificationHelper {
                         .bigText(body)
                 )
                 .setPriority(
-                    NotificationCompat.PRIORITY_MAX
+                    if (offsetMinutes <= 15) {
+                        NotificationCompat.PRIORITY_MAX
+                    } else {
+                        NotificationCompat.PRIORITY_HIGH
+                    }
                 )
                 .setCategory(
                     NotificationCompat.CATEGORY_ALARM
@@ -243,6 +303,14 @@ object NotificationHelper {
                 .setShowWhen(
                     true
                 )
+                .apply {
+                    if (offsetMinutes <= 15) {
+                        setFullScreenIntent(
+                            alarmPendingIntent,
+                            true
+                        )
+                    }
+                }
                 .build()
 
         try {
@@ -301,3 +369,4 @@ object NotificationHelper {
     fun getJourneyIdExtra(): String =
         EXTRA_JOURNEY_ID
 }
+

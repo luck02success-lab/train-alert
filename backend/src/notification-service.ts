@@ -81,10 +81,6 @@ export class NotificationService {
           );
 
       if (!delivery) {
-        /*
-         * The delivery is already sent or currently
-         * being processed by another worker.
-         */
         continue;
       }
 
@@ -100,13 +96,6 @@ export class NotificationService {
       await this.repository
         .getDeliverySummary(alert.id);
 
-    /*
-     * The alert is complete when there are no deliveries
-     * waiting to be sent and no retryable failures.
-     *
-     * Terminal failures (invalid token / max attempts)
-     * do not keep the alert alive forever.
-     */
     if (
       summary.pending === 0 &&
       summary.sending === 0 &&
@@ -222,13 +211,13 @@ export class NotificationService {
       alert.offsetMinutes;
 
     const title =
-      offset === 0
-        ? "Your train is arriving"
+      offset <= 15
+        ? "WAKE UP"
         : "Train Alert";
 
     const body =
-      offset === 0
-        ? `${alert.trainNumber} is arriving at ${alert.destinationStationName}.`
+      offset <= 15
+        ? `Approaching ${alert.destinationStationName}. Your stop is in ${offset} minutes.`
         : `${alert.trainNumber} reaches ${alert.destinationStationName} in ${offset} minutes.`;
 
     return {
@@ -247,7 +236,12 @@ export class NotificationService {
 
         offsetMinutes:
           String(offset),
+
+        title,
+
+        body,
       },
     };
   }
 }
+

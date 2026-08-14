@@ -7,7 +7,6 @@ import com.google.firebase.messaging.RemoteMessage
 
 import com.trainalert.notification.NotificationHelper
 
-
 class TrainAlertFirebaseMessagingService :
     FirebaseMessagingService() {
 
@@ -30,6 +29,9 @@ class TrainAlertFirebaseMessagingService :
 
         private const val BODY_KEY =
             "body"
+
+        private const val OFFSET_MINUTES_KEY =
+            "offsetMinutes"
     }
 
     override fun onNewToken(
@@ -74,24 +76,26 @@ class TrainAlertFirebaseMessagingService :
             "RailWake FCM message received"
         )
 
-        val notification =
-            remoteMessage.notification
-
         val data =
             remoteMessage.data
 
         val title =
-            notification?.title
+            remoteMessage.notification?.title
                 ?: data[TITLE_KEY]
                 ?: "RailWake"
 
         val body =
-            notification?.body
+            remoteMessage.notification?.body
                 ?: data[BODY_KEY]
                 ?: "Your train is approaching your destination."
 
         val journeyId =
             data[JOURNEY_ID_KEY]
+
+        val offsetMinutes =
+            data[OFFSET_MINUTES_KEY]
+                ?.toIntOrNull()
+                ?: 30
 
         val notificationId =
             createNotificationId(
@@ -113,7 +117,10 @@ class TrainAlertFirebaseMessagingService :
                     body,
 
                 journeyId =
-                    journeyId
+                    journeyId,
+
+                offsetMinutes =
+                    offsetMinutes
             )
 
         Log.i(
@@ -149,3 +156,4 @@ class TrainAlertFirebaseMessagingService :
             hash
     }
 }
+
