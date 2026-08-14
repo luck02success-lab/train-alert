@@ -18,7 +18,8 @@ import type {
   TrainService,
 } from "./train-service.js";
 
-export class JourneyServiceError extends Error {
+export class JourneyServiceError
+  extends Error {
   constructor(
     readonly code: string,
     message: string,
@@ -56,11 +57,14 @@ export class JourneyService {
         newJourney(
           userId,
           live,
-          input.destinationStationCode
+          input.destinationStationCode,
+          new Date()
         );
 
       return await this.repository
-        .createWithAlerts(journey);
+        .createWithAlerts(
+          journey
+        );
 
     } catch (error) {
       if (
@@ -98,8 +102,10 @@ export class JourneyService {
     }
 
     if (
-      journey.state !== "scheduled" &&
-      journey.state !== "active"
+      journey.state !==
+        "scheduled" &&
+      journey.state !==
+        "active"
     ) {
       throw new JourneyServiceError(
         "JOURNEY_REFRESH_REJECTED",
@@ -122,16 +128,23 @@ export class JourneyService {
         );
 
       const eta =
-        destinationEta(destination);
+        destinationEta(
+          destination,
+          live,
+          new Date()
+        );
 
       const refreshed =
-        await this.repository.refreshEta(
-          journey.id,
-          eta,
-          destination.delayMinutes,
-          live.observedAt ??
-            new Date()
-        );
+        await this.repository
+          .refreshEta(
+            journey.id,
+            eta,
+            destination.delayMinutes ??
+              live.delayMinutes ??
+              null,
+            live.observedAt ??
+              new Date()
+          );
 
       if (!refreshed) {
         throw new JourneyServiceError(
@@ -146,8 +159,35 @@ export class JourneyService {
     } catch (error) {
       if (
         error instanceof
+        JourneyServiceError
+      ) {
+        throw error;
+      }
+
+      if (
+        error instanceof
         JourneyLifecycleError
       ) {
+        /*
+         * When the destination has already been reached,
+         * reconcile the persisted journey rather than turning
+         * provider weirdness into a new future ETA.
+         */
+        if (
+          error.code ===
+          "DESTINATION_ALREADY_REACHED"
+        ) {
+          const completed =
+            await this.repository
+              .complete(
+                journey.id
+              );
+
+          if (completed) {
+            return completed;
+          }
+        }
+
         throw new JourneyServiceError(
           error.code,
           error.message,
@@ -237,7 +277,9 @@ export class JourneyService {
     userId: string
   ): Promise<Journey[]> {
     return this.repository
-      .listForUser(userId);
+      .listForUser(
+        userId
+      );
   }
 
   async cancel(
@@ -245,10 +287,11 @@ export class JourneyService {
     journeyId: string
   ): Promise<Journey> {
     const journey =
-      await this.repository.cancel(
-        journeyId,
-        userId
-      );
+      await this.repository
+        .cancel(
+          journeyId,
+          userId
+        );
 
     if (!journey) {
       throw new JourneyServiceError(
@@ -272,24 +315,35 @@ export class JourneyService {
 
     return {
       id: journey.id,
+
       trainNumber:
         journey.trainNumber,
+
       journeyDate:
         journey.journeyDate,
+
       destinationStationCode:
         journey.destinationStationCode,
+
       destinationStationName:
         journey.destinationStationName,
+
       state:
         journey.state,
+
       expectedArrival:
         journey.currentEta
-          ?.toISOString() ?? null,
+          ?.toISOString() ??
+        null,
+
       delayMinutes:
         journey.currentDelayMinutes,
+
       nextAlert:
-        nextAlert?.toISOString() ??
+        nextAlert
+          ?.toISOString() ??
         null,
+
       alertOffsetsMinutes:
         journey.alertOffsetsMinutes,
     };

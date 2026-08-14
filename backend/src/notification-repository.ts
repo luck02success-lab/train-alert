@@ -129,7 +129,7 @@ export class PostgresNotificationRepository
     limit: number
   ): Promise<DueAlert[]> {
     /*
-     * Recover deliveries that were left in "sending"
+     * Recover deliveries that were left in sending
      * because a worker crashed or timed out.
      */
     await this.db.query(
@@ -138,7 +138,8 @@ export class PostgresNotificationRepository
       SET
         state = 'failed',
         next_attempt_at = now(),
-        last_error_code = 'WORKER_TIMEOUT',
+        last_error_code =
+          'WORKER_TIMEOUT',
         last_error_message =
           'Previous notification worker timed out.',
         updated_at = now()
@@ -150,92 +151,186 @@ export class PostgresNotificationRepository
     );
 
     /*
-     * Use EXISTS rather than joining notification_deliveries
-     * directly. This prevents duplicate alert rows and allows
-     * FOR UPDATE SKIP LOCKED to operate safely on alerts.
+     * Retry an existing delivery independently of the
+     * 15-minute new-notification throttle.
      */
-    const result =
+    const retryResult =
       await this.db.query<AlertRow>(
         `
-        WITH candidates AS (
-          SELECT
+        WITH retry_candidates AS (
+          SELECT DISTINCT ON (a.journey_id)
             a.id
           FROM alerts a
+          JOIN journeys j
+            ON j.id = a.journey_id
           WHERE
-            (
-              a.state = 'pending'
-              AND a.scheduled_for <= now()
+            a.state = 'sending'
+            AND j.state IN (
+              'scheduled',
+              'active'
             )
-            OR
-            (
-              a.state = 'sending'
-              AND EXISTS (
-                SELECT 1
-                FROM notification_deliveries d
-                WHERE d.alert_id = a.id
-                  AND d.state IN (
-                    'pending',
-                    'failed'
-                  )
-                  AND (
-                    d.next_attempt_at IS NULL
-                    OR d.next_attempt_at <= now()
-                  )
-              )
+            AND a.schedule_version =
+              j.schedule_version
+            AND EXISTS (
+              SELECT 1
+              FROM notification_deliveries d
+              WHERE d.alert_id = a.id
+                AND d.state IN (
+                  'pending',
+                  'failed'
+                )
+                AND (
+                  d.next_attempt_at IS NULL
+                  OR d.next_attempt_at <= now()
+                )
             )
           ORDER BY
-            a.scheduled_for ASC
-          FOR UPDATE SKIP LOCKED
+            a.journey_id,
+            a.scheduled_for DESC
+          FOR UPDATE OF a SKIP LOCKED
           LIMIT $1
         )
-        UPDATE alerts a
-        SET
-          state = 'sending'
-        FROM candidates
-        WHERE a.id = candidates.id
-        RETURNING
+        SELECT
           a.id,
           a.journey_id AS "journeyId",
           a.offset_minutes AS "offsetMinutes",
           a.scheduled_for AS "scheduledFor",
-
-          (
-            SELECT j.train_number
-            FROM journeys j
-            WHERE j.id = a.journey_id
-          ) AS "trainNumber",
-
-          (
-            SELECT j.destination_station_name
-            FROM journeys j
-            WHERE j.id = a.journey_id
-          ) AS "destinationStationName",
-
-          (
-            SELECT j.current_eta
-            FROM journeys j
-            WHERE j.id = a.journey_id
-          ) AS "currentEta"
+          j.train_number AS "trainNumber",
+          j.destination_station_name
+            AS "destinationStationName",
+          j.current_eta AS "currentEta"
+        FROM alerts a
+        JOIN retry_candidates c
+          ON c.id = a.id
+        JOIN journeys j
+          ON j.id = a.journey_id
         `,
         [limit]
       );
 
-    return result.rows.map(
-      (row) => ({
-        id: row.id,
-        journeyId: row.journeyId,
-        offsetMinutes:
-          row.offsetMinutes,
-        scheduledFor:
-          row.scheduledFor,
-        trainNumber:
-          row.trainNumber,
-        destinationStationName:
-          row.destinationStationName,
-        currentEta:
-          row.currentEta,
-      })
-    );
+    if (
+      retryResult.rows.length > 0
+    ) {
+      return retryResult.rows;
+    }
+
+    /*
+     * New due alerts:
+     *
+     * - only current schedule version
+     * - only active/scheduled journeys
+     * - only one candidate per journey
+     * - latest due warning wins when multiple warnings
+     *   became due together
+     * - no new notification if one was successfully sent
+     *   for this journey during the previous 15 minutes
+     */
+    const result =
+      await this.db.query<AlertRow>(
+        `
+        WITH due_candidates AS (
+          SELECT DISTINCT ON (a.journey_id)
+            a.id,
+            a.journey_id,
+            a.offset_minutes,
+            a.scheduled_for
+          FROM alerts a
+          JOIN journeys j
+            ON j.id = a.journey_id
+          WHERE
+            a.state = 'pending'
+            AND a.scheduled_for <= now()
+            AND j.state IN (
+              'scheduled',
+              'active'
+            )
+            AND a.schedule_version =
+              j.schedule_version
+
+            AND NOT EXISTS (
+              SELECT 1
+              FROM notification_deliveries d
+              JOIN alerts sent_alert
+                ON sent_alert.id =
+                  d.alert_id
+              WHERE sent_alert.journey_id =
+                    a.journey_id
+                AND d.state = 'sent'
+                AND d.sent_at IS NOT NULL
+                AND d.sent_at >
+                  now() - interval '15 minutes'
+            )
+
+          ORDER BY
+            a.journey_id,
+            a.scheduled_for DESC
+        ),
+        claimed AS (
+          UPDATE alerts a
+          SET
+            state = 'sending'
+          FROM due_candidates c
+          WHERE a.id = c.id
+          RETURNING
+            a.id,
+            a.journey_id,
+            a.offset_minutes,
+            a.scheduled_for
+        )
+        SELECT
+          c.id,
+          c.journey_id AS "journeyId",
+          c.offset_minutes AS "offsetMinutes",
+          c.scheduled_for AS "scheduledFor",
+          j.train_number AS "trainNumber",
+          j.destination_station_name
+            AS "destinationStationName",
+          j.current_eta AS "currentEta"
+        FROM claimed c
+        JOIN journeys j
+          ON j.id = c.journey_id
+        `,
+        [limit]
+      );
+
+    /*
+     * If multiple older alerts were already due for the same
+     * journey, don't allow them to dribble out after the newest
+     * one has been claimed.
+     */
+    if (
+      result.rows.length > 0
+    ) {
+      const journeyIds = [
+        ...new Set(
+          result.rows.map(
+            (row) =>
+              row.journeyId
+          )
+        ),
+      ];
+
+      await this.db.query(
+        `
+        UPDATE alerts a
+        SET
+          state = 'cancelled'
+        WHERE a.journey_id =
+          ANY($1::uuid[])
+          AND a.state = 'pending'
+          AND a.scheduled_for <= now()
+          AND NOT EXISTS (
+            SELECT 1
+            FROM alerts current_alert
+            WHERE current_alert.id = a.id
+              AND current_alert.state = 'sending'
+          )
+        `,
+        [journeyIds]
+      );
+    }
+
+    return result.rows;
   }
 
   async getDevicesForAlert(
@@ -301,7 +396,10 @@ export class PostgresNotificationRepository
         ]
       );
 
-    return result.rows[0] ?? null;
+    return (
+      result.rows[0] ??
+      null
+    );
   }
 
   async markSending(
@@ -334,7 +432,8 @@ export class PostgresNotificationRepository
       );
 
     return (
-      result.rows[0]?.attemptCount ??
+      result.rows[0]
+        ?.attemptCount ??
       null
     );
   }
@@ -386,11 +485,6 @@ export class PostgresNotificationRepository
     errorCode: string,
     errorMessage: string
   ): Promise<void> {
-    /*
-     * attempt_count = 5 deliberately marks this delivery
-     * as terminal. The summary query treats attempts below
-     * five as retryable.
-     */
     await this.db.query(
       `
       UPDATE notification_deliveries
@@ -457,7 +551,8 @@ export class PostgresNotificationRepository
         [alertId]
       );
 
-    const row = result.rows[0];
+    const row =
+      result.rows[0];
 
     return {
       pending:

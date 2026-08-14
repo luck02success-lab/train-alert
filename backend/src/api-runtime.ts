@@ -1,4 +1,6 @@
-import { PostgresDatabase } from "./postgres.js";
+import {
+  PostgresDatabase,
+} from "./postgres.js";
 
 import {
   PostgresJourneyRepository,
@@ -28,13 +30,25 @@ import {
   AlertWorker,
 } from "./alert-worker.js";
 
-import { RailRadarProvider } from "./providers/railradar.js";
+import {
+  JourneyRefreshWorker,
+} from "./journey-refresh-worker.js";
 
-import { TrainService } from "./train-service.js";
+import {
+  RailRadarProvider,
+} from "./providers/railradar.js";
 
-import { JourneyService } from "./journey-service.js";
+import {
+  TrainService,
+} from "./train-service.js";
 
-import { DeviceService } from "./device-service.js";
+import {
+  JourneyService,
+} from "./journey-service.js";
+
+import {
+  DeviceService,
+} from "./device-service.js";
 
 import {
   PostgresUserRepository,
@@ -44,16 +58,23 @@ import {
   UserService,
 } from "./user-service.js";
 
-const database = new PostgresDatabase();
+const database =
+  new PostgresDatabase();
 
 const journeyRepository =
-  new PostgresJourneyRepository(database);
+  new PostgresJourneyRepository(
+    database
+  );
 
 const deviceRepository =
-  new PostgresDeviceRepository(database);
+  new PostgresDeviceRepository(
+    database
+  );
 
 const userRepository =
-  new PostgresUserRepository(database);
+  new PostgresUserRepository(
+    database
+  );
 
 export const userService =
   new UserService(
@@ -64,12 +85,20 @@ const provider =
   new RailRadarProvider();
 
 const trains =
-  new TrainService(provider);
+  new TrainService(
+    provider
+  );
 
 export const journeyService =
   new JourneyService(
     journeyRepository,
     trains
+  );
+
+export const journeyRefreshWorker =
+  new JourneyRefreshWorker(
+    journeyRepository,
+    journeyService
   );
 
 export const deviceService =

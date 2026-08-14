@@ -20,6 +20,14 @@ export interface JourneyRepository {
     alertOffsetsMinutes: number[]
   ): Promise<Journey | null>;
 
+  listForEtaRefresh(
+    limit: number
+  ): Promise<Journey[]>;
+
+  complete(
+    id: string
+  ): Promise<Journey | null>;
+
   findByIdForUser(
     id: string,
     userId: string
@@ -262,10 +270,15 @@ export class PostgresJourneyRepository
   ): Promise<Journey> {
     return this.db.transaction(
       async (db) => {
-        const created =
-          await new PostgresJourneyRepository(
+        const repository =
+          new PostgresJourneyRepository(
             db
-          ).create(journey);
+          );
+
+        const created =
+          await repository.create(
+            journey
+          );
 
         if (
           !created.currentEta
@@ -304,9 +317,23 @@ export class PostgresJourneyRepository
               current_eta = $2,
               current_delay_minutes = $3,
               last_provider_update_at = $4,
+
               schedule_version =
-                schedule_version + 1,
+                CASE
+                  WHEN current_eta IS DISTINCT FROM $2
+                    THEN schedule_version + 1
+                  ELSE schedule_version
+                END,
+
+              state =
+                CASE
+                  WHEN $2 <= now()
+                    THEN 'completed'::journey_state
+                  ELSE state
+                END,
+
               updated_at = now()
+
             WHERE id = $1
               AND state IN (
                 'scheduled',
@@ -316,6 +343,7 @@ export class PostgresJourneyRepository
                 last_provider_update_at IS NULL
                 OR last_provider_update_at <= $4
               )
+
             RETURNING ${JOURNEY_COLUMNS}
             `,
             [
@@ -333,24 +361,47 @@ export class PostgresJourneyRepository
           return null;
         }
 
+        /*
+         * Any ETA change creates a new schedule version.
+         *
+         * Any journey completion cancels every pending alert.
+         */
         await db.query(
           `
           UPDATE alerts
-          SET state = 'cancelled'
+          SET
+            state = 'cancelled'
           WHERE journey_id = $1
             AND state = 'pending'
-            AND scheduled_for > now()
+            AND (
+              schedule_version < $2
+              OR $3 = 'completed'
+            )
           `,
-          [id]
+          [
+            id,
+            row.scheduleVersion,
+            row.state,
+          ]
         );
 
-        await insertAlerts(
-          db,
-          id,
-          eta,
-          row.scheduleVersion,
-          row.alertOffsetsMinutes
-        );
+        /*
+         * Only the current schedule version is eligible for
+         * new alerts, and insertAlerts() only creates future
+         * alert times.
+         */
+        if (
+          row.state !== "completed" &&
+          row.currentEta
+        ) {
+          await insertAlerts(
+            db,
+            id,
+            row.currentEta,
+            row.scheduleVersion,
+            row.alertOffsetsMinutes
+          );
+        }
 
         return mapJourney(row);
       }
@@ -373,12 +424,14 @@ export class PostgresJourneyRepository
               schedule_version =
                 schedule_version + 1,
               updated_at = now()
+
             WHERE id = $1
               AND user_id = $2
               AND state IN (
                 'scheduled',
                 'active'
               )
+
             RETURNING ${JOURNEY_COLUMNS}
             `,
             [
@@ -398,12 +451,16 @@ export class PostgresJourneyRepository
         await db.query(
           `
           UPDATE alerts
-          SET state = 'cancelled'
+          SET
+            state = 'cancelled'
           WHERE journey_id = $1
             AND state = 'pending'
-            AND scheduled_for > now()
+            AND schedule_version < $2
           `,
-          [id]
+          [
+            id,
+            row.scheduleVersion,
+          ]
         );
 
         if (
@@ -423,6 +480,81 @@ export class PostgresJourneyRepository
     );
   }
 
+  async listForEtaRefresh(
+    limit: number
+  ): Promise<Journey[]> {
+    const result =
+      await this.db.query<JourneyRow>(
+        `
+        SELECT ${JOURNEY_COLUMNS}
+        FROM journeys
+        WHERE state IN (
+          'scheduled',
+          'active'
+        )
+        AND (
+          last_provider_update_at IS NULL
+          OR last_provider_update_at <=
+            now() - interval '5 minutes'
+        )
+        ORDER BY
+          last_provider_update_at ASC NULLS FIRST,
+          created_at ASC
+        LIMIT $1
+        `,
+        [limit]
+      );
+
+    return result.rows.map(
+      mapJourney
+    );
+  }
+
+  async complete(
+    id: string
+  ): Promise<Journey | null> {
+    return this.db.transaction(
+      async (db) => {
+        const result =
+          await db.query<JourneyRow>(
+            `
+            UPDATE journeys
+            SET
+              state = 'completed',
+              updated_at = now()
+            WHERE id = $1
+              AND state IN (
+                'scheduled',
+                'active'
+              )
+            RETURNING ${JOURNEY_COLUMNS}
+            `,
+            [id]
+          );
+
+        const row =
+          result.rows[0];
+
+        if (!row) {
+          return null;
+        }
+
+        await db.query(
+          `
+          UPDATE alerts
+          SET
+            state = 'cancelled'
+          WHERE journey_id = $1
+            AND state = 'pending'
+          `,
+          [id]
+        );
+
+        return mapJourney(row);
+      }
+    );
+  }
+
   async findByIdForUser(
     id: string,
     userId: string
@@ -435,7 +567,10 @@ export class PostgresJourneyRepository
         WHERE id = $1
           AND user_id = $2
         `,
-        [id, userId]
+        [
+          id,
+          userId,
+        ]
       );
 
     return result.rows[0]
@@ -458,7 +593,9 @@ export class PostgresJourneyRepository
           CASE state
             WHEN 'active' THEN 0
             WHEN 'scheduled' THEN 1
-            ELSE 2
+            WHEN 'completed' THEN 2
+            WHEN 'cancelled' THEN 3
+            ELSE 4
           END,
           created_at DESC
         `,
@@ -483,15 +620,20 @@ export class PostgresJourneyRepository
             SET
               state = 'cancelled',
               updated_at = now()
+
             WHERE id = $1
               AND user_id = $2
               AND state IN (
                 'scheduled',
                 'active'
               )
+
             RETURNING ${JOURNEY_COLUMNS}
             `,
-            [id, userId]
+            [
+              id,
+              userId,
+            ]
           );
 
         const row =
@@ -504,7 +646,8 @@ export class PostgresJourneyRepository
         await db.query(
           `
           UPDATE alerts
-          SET state = 'cancelled'
+          SET
+            state = 'cancelled'
           WHERE journey_id = $1
             AND state = 'pending'
           `,
@@ -530,7 +673,8 @@ export class PostgresJourneyRepository
         WHERE journey_id = $1
           AND state = 'pending'
           AND scheduled_for >= now()
-        ORDER BY scheduled_for ASC
+        ORDER BY
+          scheduled_for ASC
         LIMIT 1
         `,
         [journeyId]
@@ -538,7 +682,8 @@ export class PostgresJourneyRepository
 
     return (
       result.rows[0]
-        ?.scheduledFor ?? null
+        ?.scheduledFor ??
+      null
     );
   }
 }

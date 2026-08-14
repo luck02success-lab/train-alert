@@ -484,7 +484,7 @@ describe.skipIf(!runIntegration)(
 
           expect(
             counts.get("cancelled")
-          ).toBe(7);
+          ).toBe(9);
 
           // 10. TERMINAL JOURNEY
           // CANNOT BE CANCELLED AGAIN

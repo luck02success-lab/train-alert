@@ -1,16 +1,23 @@
-import { alertWorker } from "../../src/api-runtime.js";
+import {
+  alertWorker,
+  journeyRefreshWorker,
+} from "../../src/api-runtime.js";
 
 function json(
   body: unknown,
   status = 200
 ): Response {
-  return Response.json(body, { status });
+  return Response.json(
+    body,
+    { status }
+  );
 }
 
 function isAuthorized(
   request: Request
 ): boolean {
-  const secret = process.env.CRON_SECRET;
+  const secret =
+    process.env.CRON_SECRET;
 
   if (!secret) {
     console.error(
@@ -21,7 +28,9 @@ function isAuthorized(
   }
 
   return (
-    request.headers.get("authorization") ===
+    request.headers.get(
+      "authorization"
+    ) ===
     `Bearer ${secret}`
   );
 }
@@ -29,12 +38,14 @@ function isAuthorized(
 export async function GET(
   request: Request
 ): Promise<Response> {
-
-  if (!isAuthorized(request)) {
+  if (
+    !isAuthorized(request)
+  ) {
     return json(
       {
         error: {
-          code: "UNAUTHORIZED",
+          code:
+            "UNAUTHORIZED",
           message:
             "Invalid or missing cron authorization.",
         },
@@ -44,16 +55,43 @@ export async function GET(
   }
 
   try {
+    /*
+     * 1. Refresh active/scheduled journeys whose
+     *    provider observation is >= 5 minutes old.
+     *
+     *    This handles both delays and early arrivals.
+     */
+    const refresh =
+      await journeyRefreshWorker.run();
+
+    /*
+     * 2. Process due notifications.
+     *
+     *    notificationRepository applies the 15-minute
+     *    minimum notification gap and chooses only the
+     *    latest due warning per journey.
+     */
     const processed =
       await alertWorker.run();
 
     return json({
-      processed,
       status: "ok",
+
+      refresh: {
+        refreshed:
+          refresh.refreshed,
+
+        completed:
+          refresh.completed,
+
+        failed:
+          refresh.failed,
+      },
+
+      processed,
     });
 
   } catch (error) {
-
     console.error(
       "Alert worker failed",
       error
@@ -62,7 +100,8 @@ export async function GET(
     return json(
       {
         error: {
-          code: "ALERT_WORKER_FAILED",
+          code:
+            "ALERT_WORKER_FAILED",
           message:
             "Alert worker failed.",
         },
