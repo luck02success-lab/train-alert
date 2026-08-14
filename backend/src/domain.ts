@@ -12,7 +12,15 @@ export type ProviderState =
   | "rate_limited"
   | "invalid";
 
-export const ALERT_OFFSETS_MINUTES = [120, 60, 30, 15, 0] as const;
+export const ALERT_OFFSETS_MINUTES = [
+  120,
+  60,
+  30,
+  15,
+] as const;
+
+export type AlertOffsetMinutes =
+  (typeof ALERT_OFFSETS_MINUTES)[number];
 
 export interface AlertPlan {
   journeyId: string;
@@ -35,6 +43,18 @@ export interface Journey {
   currentDelayMinutes: number | null;
   lastProviderUpdateAt: Date | null;
   scheduleVersion: number;
+
+  /**
+   * User-selected alert offsets in minutes.
+   *
+   * Example:
+   * [120, 60, 30, 15]
+   *
+   * An empty array is valid and means the user has
+   * disabled all future alerts for this journey.
+   */
+  alertOffsetsMinutes: number[];
+
   createdAt?: Date;
   updatedAt?: Date;
 }

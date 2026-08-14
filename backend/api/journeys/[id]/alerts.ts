@@ -1,8 +1,8 @@
-import type { AuthProvider } from "../../src/auth.js";
+import type { AuthProvider } from "../../../src/auth.js";
 import {
   JourneyServiceError,
-} from "../../src/journey-service.js";
-import { ApiError } from "../../src/train-service.js";
+} from "../../../src/journey-service.js";
+import { ApiError } from "../../../src/train-service.js";
 
 function json(
   body: unknown,
@@ -76,20 +76,6 @@ function errorResponse(
   );
 }
 
-function getJourneyIdFromRequest(
-  request: Request
-): string {
-  const pathname =
-    new URL(request.url).pathname;
-
-  const segments =
-    pathname
-      .split("/")
-      .filter(Boolean);
-
-  return segments.at(-1) ?? "";
-}
-
 async function getJourneyId(
   request: Request,
   context?: {
@@ -107,12 +93,18 @@ async function getJourneyId(
     }
   }
 
-  return getJourneyIdFromRequest(
-    request
+  const pathname =
+    new URL(request.url).pathname;
+
+  return (
+    pathname
+      .split("/")
+      .filter(Boolean)
+      .at(-2) ?? ""
   );
 }
 
-export async function GET(
+export async function PATCH(
   request: Request,
   context?: {
     params?: Promise<{
@@ -125,7 +117,7 @@ export async function GET(
       auth,
       journeyService,
     } = await import(
-      "../../src/api-runtime.js"
+      "../../../src/api-runtime.js"
     );
 
     const { userId } =
@@ -134,13 +126,13 @@ export async function GET(
         auth
       );
 
-    const id =
+    const journeyId =
       await getJourneyId(
         request,
         context
       );
 
-    if (!id) {
+    if (!journeyId) {
       throw new JourneyServiceError(
         "INVALID_JOURNEY_ID",
         "Journey id is required.",
@@ -148,66 +140,85 @@ export async function GET(
       );
     }
 
-    const journey =
-      await journeyService.get(
-        userId,
-        id
-      );
+    let body: unknown;
 
-    return json(
-      await journeyService.response(
-        journey
+    try {
+      body = await request.json();
+    } catch {
+      return json(
+        {
+          error: {
+            code: "INVALID_JSON",
+            message:
+              "Request body must be valid JSON.",
+          },
+        },
+        400
+      );
+    }
+
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !(
+        "alertOffsetsMinutes" in body
+      ) ||
+      !Array.isArray(
+        (
+          body as {
+            alertOffsetsMinutes?: unknown;
+          }
+        ).alertOffsetsMinutes
       )
-    );
-
-  } catch (error) {
-    return errorResponse(
-      error
-    );
-  }
-}
-
-export async function DELETE(
-  request: Request,
-  context?: {
-    params?: Promise<{
-      id: string;
-    }>;
-  }
-): Promise<Response> {
-  try {
-    const {
-      auth,
-      journeyService,
-    } = await import(
-      "../../src/api-runtime.js"
-    );
-
-    const { userId } =
-      await authenticate(
-        request,
-        auth
+    ) {
+      return json(
+        {
+          error: {
+            code:
+              "INVALID_ALERT_OFFSETS",
+            message:
+              "alertOffsetsMinutes must be an array containing 120, 60, 30, or 15.",
+          },
+        },
+        400
       );
+    }
 
-    const id =
-      await getJourneyId(
-        request,
-        context
-      );
+    const offsets =
+      (
+        body as {
+          alertOffsetsMinutes:
+            unknown[];
+        }
+      ).alertOffsetsMinutes;
 
-    if (!id) {
-      throw new JourneyServiceError(
-        "INVALID_JOURNEY_ID",
-        "Journey id is required.",
+    if (
+      !offsets.every(
+        (value) =>
+          typeof value ===
+          "number"
+      )
+    ) {
+      return json(
+        {
+          error: {
+            code:
+              "INVALID_ALERT_OFFSETS",
+            message:
+              "alertOffsetsMinutes must contain only numbers.",
+          },
+        },
         400
       );
     }
 
     const journey =
-      await journeyService.cancel(
-        userId,
-        id
-      );
+      await journeyService
+        .updateAlertPreferences(
+          userId,
+          journeyId,
+          offsets as number[]
+        );
 
     return json(
       await journeyService.response(

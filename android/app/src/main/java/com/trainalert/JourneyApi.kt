@@ -6,16 +6,20 @@ import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+
 import org.json.JSONArray
 import org.json.JSONObject
+
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+
 
 data class Journey(
     val id: String,
@@ -26,8 +30,10 @@ data class Journey(
     val state: String,
     val expectedArrival: String?,
     val delayMinutes: Int?,
-    val nextAlert: String?
+    val nextAlert: String?,
+    val alertOffsetsMinutes: List<Int>
 )
+
 
 object JourneyApi {
 
@@ -65,6 +71,7 @@ object JourneyApi {
         "application/json; charset=utf-8"
             .toMediaType()
 
+
     fun listJourneys(
         context: Context,
         onSuccess: (List<Journey>) -> Unit,
@@ -99,7 +106,9 @@ object JourneyApi {
                     }
 
                     val journeys =
-                        parseJourneyList(body)
+                        parseJourneyList(
+                            body
+                        )
 
                     mainHandler.post {
                         onSuccess(
@@ -107,6 +116,7 @@ object JourneyApi {
                         )
                     }
                 }
+
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -124,6 +134,7 @@ object JourneyApi {
             }
         }
     }
+
 
     fun getJourney(
         context: Context,
@@ -170,6 +181,7 @@ object JourneyApi {
                         )
                     }
                 }
+
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -187,6 +199,7 @@ object JourneyApi {
             }
         }
     }
+
 
     fun createJourney(
         context: Context,
@@ -253,6 +266,7 @@ object JourneyApi {
                         )
                     }
                 }
+
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -270,6 +284,7 @@ object JourneyApi {
             }
         }
     }
+
 
     fun cancelJourney(
         context: Context,
@@ -316,6 +331,7 @@ object JourneyApi {
                         )
                     }
                 }
+
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -333,6 +349,85 @@ object JourneyApi {
             }
         }
     }
+
+
+    fun updateAlertPreferences(
+        context: Context,
+        journeyId: String,
+        alertOffsetsMinutes: List<Int>,
+        onSuccess: (Journey) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        executor.execute {
+            try {
+                val payload =
+                    JSONObject()
+                        .put(
+                            "alertOffsetsMinutes",
+                            JSONArray(
+                                alertOffsetsMinutes
+                            )
+                        )
+
+                val response =
+                    executeAuthenticatedRequest(
+                        createJsonRequest(
+                            method = "PATCH",
+                            path =
+                                "/api/journeys/$journeyId/alerts",
+                            payload = payload
+                        )
+                    )
+
+                response.use {
+                    val body =
+                        it.body
+                            ?.string()
+                            .orEmpty()
+
+                    if (!it.isSuccessful) {
+                        postError(
+                            onError,
+                            parseErrorMessage(
+                                body,
+                                it.code,
+                                "Unable to update alert preferences"
+                            )
+                        )
+
+                        return@use
+                    }
+
+                    val journey =
+                        parseJourney(
+                            JSONObject(body)
+                        )
+
+                    mainHandler.post {
+                        onSuccess(
+                            journey
+                        )
+                    }
+                }
+
+            } catch (error: Exception) {
+                Log.e(
+                    TAG,
+                    "Update alert preferences request failed",
+                    error
+                )
+
+                postError(
+                    onError,
+                    networkErrorMessage(
+                        context,
+                        error
+                    )
+                )
+            }
+        }
+    }
+
 
     private fun executeAuthenticatedRequest(
         requestFactory:
@@ -377,6 +472,7 @@ object JourneyApi {
         }
     }
 
+
     private fun createGetRequest(
         path: String
     ): (String) -> Request {
@@ -395,6 +491,7 @@ object JourneyApi {
         }
     }
 
+
     private fun createDeleteRequest(
         path: String
     ): (String) -> Request {
@@ -412,6 +509,7 @@ object JourneyApi {
                 .build()
         }
     }
+
 
     private fun createJsonRequest(
         method: String,
@@ -444,9 +542,11 @@ object JourneyApi {
         }
     }
 
+
     private fun parseJourneyList(
         body: String
     ): List<Journey> {
+
         val array =
             JSONArray(body)
 
@@ -454,7 +554,8 @@ object JourneyApi {
             mutableListOf<Journey>()
 
         for (
-            index in 0 until array.length()
+            index in
+            0 until array.length()
         ) {
             journeys.add(
                 parseJourney(
@@ -468,18 +569,47 @@ object JourneyApi {
         return journeys
     }
 
+
     private fun parseJourney(
         json: JSONObject
     ): Journey {
+
+        val offsets =
+            mutableListOf<Int>()
+
+        val offsetsJson =
+            json.optJSONArray(
+                "alertOffsetsMinutes"
+            )
+
+        if (
+            offsetsJson != null
+        ) {
+            for (
+                index in
+                0 until offsetsJson.length()
+            ) {
+                offsets.add(
+                    offsetsJson.getInt(
+                        index
+                    )
+                )
+            }
+        }
+
         return Journey(
             id =
                 json.getString("id"),
 
             trainNumber =
-                json.getString("trainNumber"),
+                json.getString(
+                    "trainNumber"
+                ),
 
             journeyDate =
-                json.getString("journeyDate"),
+                json.getString(
+                    "journeyDate"
+                ),
 
             destinationStationCode =
                 json.getString(
@@ -511,9 +641,13 @@ object JourneyApi {
                 nullableString(
                     json,
                     "nextAlert"
-                )
+                ),
+
+            alertOffsetsMinutes =
+                offsets
         )
     }
+
 
     private fun nullableString(
         json: JSONObject,
@@ -529,6 +663,7 @@ object JourneyApi {
         return json.getString(key)
     }
 
+
     private fun nullableInt(
         json: JSONObject,
         key: String
@@ -543,6 +678,7 @@ object JourneyApi {
         return json.getInt(key)
     }
 
+
     private fun parseErrorMessage(
         body: String,
         statusCode: Int,
@@ -553,7 +689,9 @@ object JourneyApi {
                 JSONObject(body)
 
             val error =
-                json.optJSONObject("error")
+                json.optJSONObject(
+                    "error"
+                )
 
             error
                 ?.optString("message")
@@ -579,15 +717,18 @@ object JourneyApi {
                     else ->
                         "$fallback ($statusCode)"
                 }
+
         } catch (_: Exception) {
             "$fallback ($statusCode)"
         }
     }
 
+
     private fun networkErrorMessage(
         context: Context,
         error: Exception
     ): String {
+
         if (
             !hasNetwork(context)
         ) {
@@ -610,9 +751,11 @@ object JourneyApi {
         }
     }
 
+
     private fun hasNetwork(
         context: Context
     ): Boolean {
+
         val manager =
             context.getSystemService(
                 ConnectivityManager::class.java
@@ -628,9 +771,11 @@ object JourneyApi {
             ) ?: return false
 
         return capabilities.hasCapability(
-            NetworkCapabilities.NET_CAPABILITY_INTERNET
+            NetworkCapabilities
+                .NET_CAPABILITY_INTERNET
         )
     }
+
 
     private fun postError(
         callback: (String) -> Unit,

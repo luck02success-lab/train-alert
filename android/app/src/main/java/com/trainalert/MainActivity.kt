@@ -1557,6 +1557,14 @@ private fun JourneyDetailScreen(
         mutableStateOf(false)
     }
 
+    var savingAlertPreferences by remember {
+    mutableStateOf(false)
+}
+
+var alertPreferenceError by remember {
+    mutableStateOf<String?>(null)
+}
+
 
     fun loadJourney() {
 
@@ -1810,15 +1818,34 @@ private fun JourneyDetailScreen(
             journey != null -> {
 
                 JourneyDetailsContent(
+    journey = journey!!,
+    error = error,
+    cancelling = cancelling,
+    savingAlertPreferences = savingAlertPreferences,
+    alertPreferenceError = alertPreferenceError,
+    onSaveAlertPreferences = { offsets ->
 
-                    journey =
-                        journey!!,
+        savingAlertPreferences = true
+        alertPreferenceError = null
 
-                    error =
-                        error,
+        JourneyApi.updateAlertPreferences(
+            context = context,
+            journeyId = journeyId,
+            alertOffsetsMinutes = offsets,
 
-                    cancelling =
-                        cancelling,
+            onSuccess = { updatedJourney ->
+
+                journey = updatedJourney
+                savingAlertPreferences = false
+            },
+
+            onError = { message ->
+
+                alertPreferenceError = message
+                savingAlertPreferences = false
+            }
+        )
+    },
 
                     onCancel = {
 
@@ -1845,6 +1872,9 @@ private fun JourneyDetailsContent(
     journey: Journey,
     error: String?,
     cancelling: Boolean,
+    savingAlertPreferences: Boolean,
+    alertPreferenceError: String?,
+    onSaveAlertPreferences: (List<Int>) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier
 ) {
@@ -1999,6 +2029,46 @@ private fun JourneyDetailsContent(
                     value =
                         formatIstDateTime(it)
                 )
+                Spacer(
+    modifier =
+        Modifier.height(16.dp)
+)
+
+AlertPreferencesCard(
+    expectedArrival =
+        journey.expectedArrival,
+
+    selectedOffsets =
+        journey.alertOffsetsMinutes,
+
+    saving =
+        savingAlertPreferences,
+
+    onSave =
+        onSaveAlertPreferences,
+
+    modifier =
+        Modifier.fillMaxWidth()
+)
+
+alertPreferenceError
+    ?.takeIf {
+        it.isNotBlank()
+    }
+    ?.let {
+        Spacer(
+            modifier =
+                Modifier.height(8.dp)
+        )
+
+        Text(
+            text = it,
+            color =
+                MaterialTheme
+                    .colorScheme
+                    .error
+        )
+    }
             }
 
 

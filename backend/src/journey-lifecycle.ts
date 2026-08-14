@@ -5,7 +5,9 @@ import {
   type Journey,
 } from "./domain.js";
 
-import type { TrainLiveStatus } from "./providers/railradar.js";
+import type {
+  TrainLiveStatus,
+} from "./providers/railradar.js";
 
 export class JourneyLifecycleError extends Error {
   constructor(
@@ -73,6 +75,38 @@ export function canTransition(
   );
 }
 
+export function normalizeAlertOffsets(
+  offsets: number[]
+): number[] {
+  const allowed = new Set<number>(
+    ALERT_OFFSETS_MINUTES
+  );
+
+  const normalized = [
+    ...new Set(
+      offsets.filter(
+        (offset) =>
+          Number.isInteger(offset) &&
+          allowed.has(offset)
+      )
+    ),
+  ];
+
+  if (
+    normalized.length !==
+    offsets.length
+  ) {
+    throw new JourneyLifecycleError(
+      "INVALID_ALERT_OFFSETS",
+      "Alert offsets must contain only 120, 60, 30, or 15 minutes."
+    );
+  }
+
+  return normalized.sort(
+    (a, b) => b - a
+  );
+}
+
 export function newJourney(
   userId: string,
   live: TrainLiveStatus,
@@ -92,10 +126,11 @@ export function newJourney(
     );
   }
 
-  const destination = resolveDestination(
-    live,
-    destinationCode
-  );
+  const destination =
+    resolveDestination(
+      live,
+      destinationCode
+    );
 
   return {
     id: randomUUID(),
@@ -116,32 +151,9 @@ export function newJourney(
     currentDelayMinutes: null,
     lastProviderUpdateAt: null,
     scheduleVersion: 0,
+
+    alertOffsetsMinutes: [
+      ...ALERT_OFFSETS_MINUTES,
+    ],
   };
-}
-
-export function initialAlerts(
-  journey: Journey
-) {
-  const { currentEta } = journey;
-
-  if (!currentEta) {
-    throw new JourneyLifecycleError(
-      "DESTINATION_ETA_UNAVAILABLE",
-      "An arrival time is not available for this destination."
-    );
-  }
-
-  const etaMillis = currentEta.getTime();
-
-  return ALERT_OFFSETS_MINUTES.map(
-    (offset) => ({
-      journeyId: journey.id,
-      offset,
-      scheduledFor: new Date(
-        etaMillis -
-          offset * 60_000
-      ),
-      state: "pending" as const,
-    })
-  );
 }

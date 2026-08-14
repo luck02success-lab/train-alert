@@ -32,7 +32,7 @@ fun propertyOrNull(
 android {
     namespace = "com.trainalert"
 
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId =
@@ -40,7 +40,7 @@ android {
 
         minSdk = 26
 
-        targetSdk = 35
+        targetSdk = 36
 
         versionCode = 1
 
@@ -209,6 +209,6 @@ dependencies {
     )
 
     implementation(
-    "androidx.fragment:fragment-ktx:1.8.6"
-)
+        "androidx.fragment:fragment-ktx:1.8.6"
+    )
 }

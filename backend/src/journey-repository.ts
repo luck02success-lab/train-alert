@@ -2,22 +2,38 @@ import type { Journey } from "./domain.js";
 
 export interface JourneyRepository {
   create(journey: Journey): Promise<Journey>;
-  createWithAlerts(journey: Journey): Promise<Journey>;
+
+  createWithAlerts(
+    journey: Journey
+  ): Promise<Journey>;
+
   refreshEta(
     id: string,
     eta: Date,
     delayMinutes: number | null,
     observedAt: Date
   ): Promise<Journey | null>;
+
+  updateAlertPreferences(
+    id: string,
+    userId: string,
+    alertOffsetsMinutes: number[]
+  ): Promise<Journey | null>;
+
   findByIdForUser(
     id: string,
     userId: string
   ): Promise<Journey | null>;
-  listForUser(userId: string): Promise<Journey[]>;
+
+  listForUser(
+    userId: string
+  ): Promise<Journey[]>;
+
   cancel(
     id: string,
     userId: string
   ): Promise<Journey | null>;
+
   nextAlertForJourney(
     journeyId: string
   ): Promise<Date | null>;
@@ -27,10 +43,14 @@ export interface PostgresClient {
   query<T>(
     sql: string,
     parameters: readonly unknown[]
-  ): Promise<{ rows: T[] }>;
+  ): Promise<{
+    rows: T[];
+  }>;
 
   transaction<T>(
-    work: (client: PostgresClient) => Promise<T>
+    work: (
+      client: PostgresClient
+    ) => Promise<T>
   ): Promise<T>;
 }
 
@@ -47,13 +67,21 @@ type JourneyRow = {
   currentDelayMinutes: number | null;
   lastProviderUpdateAt: Date | null;
   scheduleVersion: number;
+  alertOffsetsMinutes: number[];
   createdAt?: Date;
   updatedAt?: Date;
 };
 
-const OFFSETS = [120, 60, 30, 15, 0];
+const DEFAULT_ALERT_OFFSETS = [
+  120,
+  60,
+  30,
+  15,
+];
 
-function mapJourney(row: JourneyRow): Journey {
+function mapJourney(
+  row: JourneyRow
+): Journey {
   return {
     id: row.id,
     userId: row.userId,
@@ -70,7 +98,11 @@ function mapJourney(row: JourneyRow): Journey {
       row.currentDelayMinutes,
     lastProviderUpdateAt:
       row.lastProviderUpdateAt,
-    scheduleVersion: row.scheduleVersion,
+    scheduleVersion:
+      row.scheduleVersion,
+    alertOffsetsMinutes:
+      row.alertOffsetsMinutes ??
+      DEFAULT_ALERT_OFFSETS,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -89,9 +121,74 @@ const JOURNEY_COLUMNS = `
   current_delay_minutes AS "currentDelayMinutes",
   last_provider_update_at AS "lastProviderUpdateAt",
   schedule_version AS "scheduleVersion",
+  alert_offsets_minutes AS "alertOffsetsMinutes",
   created_at AS "createdAt",
   updated_at AS "updatedAt"
 `;
+
+function futureAlertOffsets(
+  eta: Date,
+  offsets: number[]
+): number[] {
+  const now =
+    Date.now();
+
+  return offsets.filter(
+    (offset) =>
+      eta.getTime() -
+        offset * 60_000 >
+      now
+  );
+}
+
+async function insertAlerts(
+  db: PostgresClient,
+  journeyId: string,
+  eta: Date,
+  scheduleVersion: number,
+  offsets: number[]
+): Promise<void> {
+  for (
+    const offset of futureAlertOffsets(
+      eta,
+      offsets
+    )
+  ) {
+    await db.query(
+      `
+      INSERT INTO alerts (
+        journey_id,
+        offset_minutes,
+        schedule_version,
+        scheduled_for,
+        state
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        'pending'
+      )
+      ON CONFLICT (
+        journey_id,
+        offset_minutes,
+        schedule_version
+      )
+      DO NOTHING
+      `,
+      [
+        journeyId,
+        offset,
+        scheduleVersion,
+        new Date(
+          eta.getTime() -
+            offset * 60_000
+        ),
+      ]
+    );
+  }
+}
 
 export class PostgresJourneyRepository
   implements JourneyRepository
@@ -100,7 +197,9 @@ export class PostgresJourneyRepository
     private readonly db: PostgresClient
   ) {}
 
-  async create(journey: Journey): Promise<Journey> {
+  async create(
+    journey: Journey
+  ): Promise<Journey> {
     const result =
       await this.db.query<JourneyRow>(
         `
@@ -116,10 +215,23 @@ export class PostgresJourneyRepository
           current_eta,
           current_delay_minutes,
           last_provider_update_at,
-          schedule_version
+          schedule_version,
+          alert_offsets_minutes
         )
         VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11,
+          $12,
+          $13
         )
         RETURNING ${JOURNEY_COLUMNS}
         `,
@@ -136,57 +248,44 @@ export class PostgresJourneyRepository
           journey.currentDelayMinutes,
           journey.lastProviderUpdateAt,
           journey.scheduleVersion,
+          journey.alertOffsetsMinutes,
         ]
       );
 
-    return mapJourney(result.rows[0]!);
+    return mapJourney(
+      result.rows[0]!
+    );
   }
 
   async createWithAlerts(
     journey: Journey
   ): Promise<Journey> {
-    return this.db.transaction(async (db) => {
-      const created =
-        await new PostgresJourneyRepository(db)
-          .create(journey);
+    return this.db.transaction(
+      async (db) => {
+        const created =
+          await new PostgresJourneyRepository(
+            db
+          ).create(journey);
 
-      if (!created.currentEta) {
-        throw new Error(
-          "Cannot create alerts without an ETA"
+        if (
+          !created.currentEta
+        ) {
+          throw new Error(
+            "Cannot create alerts without an ETA"
+          );
+        }
+
+        await insertAlerts(
+          db,
+          created.id,
+          created.currentEta,
+          created.scheduleVersion,
+          created.alertOffsetsMinutes
         );
-      }
 
-      for (const offset of OFFSETS) {
-        await db.query(
-          `
-          INSERT INTO alerts (
-            journey_id,
-            offset_minutes,
-            schedule_version,
-            scheduled_for,
-            state
-          )
-          VALUES ($1,$2,$3,$4,'pending')
-          ON CONFLICT (
-            journey_id,
-            offset_minutes,
-            schedule_version
-          ) DO NOTHING
-          `,
-          [
-            created.id,
-            offset,
-            created.scheduleVersion,
-            new Date(
-              created.currentEta.getTime() -
-                offset * 60_000
-            ),
-          ]
-        );
+        return created;
       }
-
-      return created;
-    });
+    );
   }
 
   async refreshEta(
@@ -195,77 +294,133 @@ export class PostgresJourneyRepository
     delayMinutes: number | null,
     observedAt: Date
   ): Promise<Journey | null> {
-    return this.db.transaction(async (db) => {
-      const result =
-        await db.query<JourneyRow>(
-          `
-          UPDATE journeys
-          SET
-            current_eta = $2,
-            current_delay_minutes = $3,
-            last_provider_update_at = $4,
-            schedule_version =
-              schedule_version + 1,
-            updated_at = now()
-          WHERE id = $1
-            AND state IN ('scheduled','active')
-            AND (
-              last_provider_update_at IS NULL
-              OR last_provider_update_at <= $4
-            )
-          RETURNING ${JOURNEY_COLUMNS}
-          `,
-          [id, eta, delayMinutes, observedAt]
-        );
+    return this.db.transaction(
+      async (db) => {
+        const result =
+          await db.query<JourneyRow>(
+            `
+            UPDATE journeys
+            SET
+              current_eta = $2,
+              current_delay_minutes = $3,
+              last_provider_update_at = $4,
+              schedule_version =
+                schedule_version + 1,
+              updated_at = now()
+            WHERE id = $1
+              AND state IN (
+                'scheduled',
+                'active'
+              )
+              AND (
+                last_provider_update_at IS NULL
+                OR last_provider_update_at <= $4
+              )
+            RETURNING ${JOURNEY_COLUMNS}
+            `,
+            [
+              id,
+              eta,
+              delayMinutes,
+              observedAt,
+            ]
+          );
 
-      const row = result.rows[0];
+        const row =
+          result.rows[0];
 
-      if (!row) {
-        return null;
-      }
+        if (!row) {
+          return null;
+        }
 
-      await db.query(
-        `
-        UPDATE alerts
-        SET state = 'cancelled'
-        WHERE journey_id = $1
-          AND state = 'pending'
-          AND scheduled_for > now()
-        `,
-        [id]
-      );
-
-      for (const offset of OFFSETS) {
         await db.query(
           `
-          INSERT INTO alerts (
-            journey_id,
-            offset_minutes,
-            schedule_version,
-            scheduled_for,
-            state
-          )
-          VALUES ($1,$2,$3,$4,'pending')
-          ON CONFLICT (
-            journey_id,
-            offset_minutes,
-            schedule_version
-          ) DO NOTHING
+          UPDATE alerts
+          SET state = 'cancelled'
+          WHERE journey_id = $1
+            AND state = 'pending'
+            AND scheduled_for > now()
           `,
-          [
-            id,
-            offset,
-            row.scheduleVersion,
-            new Date(
-              eta.getTime() -
-                offset * 60_000
-            ),
-          ]
+          [id]
         );
-      }
 
-      return mapJourney(row);
-    });
+        await insertAlerts(
+          db,
+          id,
+          eta,
+          row.scheduleVersion,
+          row.alertOffsetsMinutes
+        );
+
+        return mapJourney(row);
+      }
+    );
+  }
+
+  async updateAlertPreferences(
+    id: string,
+    userId: string,
+    alertOffsetsMinutes: number[]
+  ): Promise<Journey | null> {
+    return this.db.transaction(
+      async (db) => {
+        const result =
+          await db.query<JourneyRow>(
+            `
+            UPDATE journeys
+            SET
+              alert_offsets_minutes = $3,
+              schedule_version =
+                schedule_version + 1,
+              updated_at = now()
+            WHERE id = $1
+              AND user_id = $2
+              AND state IN (
+                'scheduled',
+                'active'
+              )
+            RETURNING ${JOURNEY_COLUMNS}
+            `,
+            [
+              id,
+              userId,
+              alertOffsetsMinutes,
+            ]
+          );
+
+        const row =
+          result.rows[0];
+
+        if (!row) {
+          return null;
+        }
+
+        await db.query(
+          `
+          UPDATE alerts
+          SET state = 'cancelled'
+          WHERE journey_id = $1
+            AND state = 'pending'
+            AND scheduled_for > now()
+          `,
+          [id]
+        );
+
+        if (
+          row.currentEta
+        ) {
+          await insertAlerts(
+            db,
+            id,
+            row.currentEta,
+            row.scheduleVersion,
+            row.alertOffsetsMinutes
+          );
+        }
+
+        return mapJourney(row);
+      }
+    );
   }
 
   async findByIdForUser(
@@ -284,7 +439,9 @@ export class PostgresJourneyRepository
       );
 
     return result.rows[0]
-      ? mapJourney(result.rows[0])
+      ? mapJourney(
+          result.rows[0]
+        )
       : null;
   }
 
@@ -308,56 +465,67 @@ export class PostgresJourneyRepository
         [userId]
       );
 
-    return result.rows.map(mapJourney);
+    return result.rows.map(
+      mapJourney
+    );
   }
 
   async cancel(
     id: string,
     userId: string
   ): Promise<Journey | null> {
-    return this.db.transaction(async (db) => {
-      const result =
-        await db.query<JourneyRow>(
+    return this.db.transaction(
+      async (db) => {
+        const result =
+          await db.query<JourneyRow>(
+            `
+            UPDATE journeys
+            SET
+              state = 'cancelled',
+              updated_at = now()
+            WHERE id = $1
+              AND user_id = $2
+              AND state IN (
+                'scheduled',
+                'active'
+              )
+            RETURNING ${JOURNEY_COLUMNS}
+            `,
+            [id, userId]
+          );
+
+        const row =
+          result.rows[0];
+
+        if (!row) {
+          return null;
+        }
+
+        await db.query(
           `
-          UPDATE journeys
-          SET
-            state = 'cancelled',
-            updated_at = now()
-          WHERE id = $1
-            AND user_id = $2
-            AND state IN ('scheduled','active')
-          RETURNING ${JOURNEY_COLUMNS}
+          UPDATE alerts
+          SET state = 'cancelled'
+          WHERE journey_id = $1
+            AND state = 'pending'
           `,
-          [id, userId]
+          [id]
         );
 
-      const row = result.rows[0];
-
-      if (!row) {
-        return null;
+        return mapJourney(row);
       }
-
-      await db.query(
-        `
-        UPDATE alerts
-        SET state = 'cancelled'
-        WHERE journey_id = $1
-          AND state = 'pending'
-        `,
-        [id]
-      );
-
-      return mapJourney(row);
-    });
+    );
   }
 
   async nextAlertForJourney(
     journeyId: string
   ): Promise<Date | null> {
     const result =
-      await this.db.query<{ scheduledFor: Date }>(
+      await this.db.query<{
+        scheduledFor: Date;
+      }>(
         `
-        SELECT scheduled_for AS "scheduledFor"
+        SELECT
+          scheduled_for AS "scheduledFor"
         FROM alerts
         WHERE journey_id = $1
           AND state = 'pending'
@@ -368,6 +536,9 @@ export class PostgresJourneyRepository
         [journeyId]
       );
 
-    return result.rows[0]?.scheduledFor ?? null;
+    return (
+      result.rows[0]
+        ?.scheduledFor ?? null
+    );
   }
 }

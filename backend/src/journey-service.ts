@@ -1,12 +1,22 @@
-import type { Journey } from "./domain.js";
-import type { JourneyRepository } from "./journey-repository.js";
+import type {
+  Journey,
+} from "./domain.js";
+
+import type {
+  JourneyRepository,
+} from "./journey-repository.js";
+
 import {
   destinationEta,
   newJourney,
+  normalizeAlertOffsets,
   resolveDestination,
   JourneyLifecycleError,
 } from "./journey-lifecycle.js";
-import type { TrainService } from "./train-service.js";
+
+import type {
+  TrainService,
+} from "./train-service.js";
 
 export class JourneyServiceError extends Error {
   constructor(
@@ -20,8 +30,11 @@ export class JourneyServiceError extends Error {
 
 export class JourneyService {
   constructor(
-    private readonly repository: JourneyRepository,
-    private readonly trains: TrainService
+    private readonly repository:
+      JourneyRepository,
+
+    private readonly trains:
+      TrainService
   ) {}
 
   async create(
@@ -32,21 +45,28 @@ export class JourneyService {
       destinationStationCode: string;
     }
   ): Promise<Journey> {
-    const live = await this.trains.live(
-      input.trainNumber,
-      input.journeyDate
-    );
-
-    try {
-      const journey = newJourney(
-        userId,
-        live,
-        input.destinationStationCode
+    const live =
+      await this.trains.live(
+        input.trainNumber,
+        input.journeyDate
       );
 
-      return await this.repository.createWithAlerts(journey);
+    try {
+      const journey =
+        newJourney(
+          userId,
+          live,
+          input.destinationStationCode
+        );
+
+      return await this.repository
+        .createWithAlerts(journey);
+
     } catch (error) {
-      if (error instanceof JourneyLifecycleError) {
+      if (
+        error instanceof
+        JourneyLifecycleError
+      ) {
         throw new JourneyServiceError(
           error.code,
           error.message,
@@ -63,10 +83,11 @@ export class JourneyService {
     journeyId: string
   ): Promise<Journey> {
     const journey =
-      await this.repository.findByIdForUser(
-        journeyId,
-        userId
-      );
+      await this.repository
+        .findByIdForUser(
+          journeyId,
+          userId
+        );
 
     if (!journey) {
       throw new JourneyServiceError(
@@ -87,25 +108,29 @@ export class JourneyService {
       );
     }
 
-    const live = await this.trains.live(
-      journey.trainNumber,
-      journey.journeyDate
-    );
-
-    try {
-      const destination = resolveDestination(
-        live,
-        journey.destinationStationCode
+    const live =
+      await this.trains.live(
+        journey.trainNumber,
+        journey.journeyDate
       );
 
-      const eta = destinationEta(destination);
+    try {
+      const destination =
+        resolveDestination(
+          live,
+          journey.destinationStationCode
+        );
+
+      const eta =
+        destinationEta(destination);
 
       const refreshed =
         await this.repository.refreshEta(
           journey.id,
           eta,
           destination.delayMinutes,
-          live.observedAt ?? new Date()
+          live.observedAt ??
+            new Date()
         );
 
       if (!refreshed) {
@@ -117,8 +142,64 @@ export class JourneyService {
       }
 
       return refreshed;
+
     } catch (error) {
-      if (error instanceof JourneyLifecycleError) {
+      if (
+        error instanceof
+        JourneyLifecycleError
+      ) {
+        throw new JourneyServiceError(
+          error.code,
+          error.message,
+          400
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async updateAlertPreferences(
+    userId: string,
+    journeyId: string,
+    alertOffsetsMinutes: number[]
+  ): Promise<Journey> {
+    try {
+      const normalized =
+        normalizeAlertOffsets(
+          alertOffsetsMinutes
+        );
+
+      const journey =
+        await this.repository
+          .updateAlertPreferences(
+            journeyId,
+            userId,
+            normalized
+          );
+
+      if (!journey) {
+        throw new JourneyServiceError(
+          "JOURNEY_NOT_FOUND",
+          "Journey not found or is no longer editable.",
+          404
+        );
+      }
+
+      return journey;
+
+    } catch (error) {
+      if (
+        error instanceof
+        JourneyServiceError
+      ) {
+        throw error;
+      }
+
+      if (
+        error instanceof
+        JourneyLifecycleError
+      ) {
         throw new JourneyServiceError(
           error.code,
           error.message,
@@ -135,10 +216,11 @@ export class JourneyService {
     journeyId: string
   ): Promise<Journey> {
     const journey =
-      await this.repository.findByIdForUser(
-        journeyId,
-        userId
-      );
+      await this.repository
+        .findByIdForUser(
+          journeyId,
+          userId
+        );
 
     if (!journey) {
       throw new JourneyServiceError(
@@ -151,8 +233,11 @@ export class JourneyService {
     return journey;
   }
 
-  async list(userId: string): Promise<Journey[]> {
-    return this.repository.listForUser(userId);
+  async list(
+    userId: string
+  ): Promise<Journey[]> {
+    return this.repository
+      .listForUser(userId);
   }
 
   async cancel(
@@ -176,27 +261,37 @@ export class JourneyService {
     return journey;
   }
 
-  async response(journey: Journey) {
+  async response(
+    journey: Journey
+  ) {
     const nextAlert =
-      await this.repository.nextAlertForJourney(
-        journey.id
-      );
+      await this.repository
+        .nextAlertForJourney(
+          journey.id
+        );
 
     return {
       id: journey.id,
-      trainNumber: journey.trainNumber,
-      journeyDate: journey.journeyDate,
+      trainNumber:
+        journey.trainNumber,
+      journeyDate:
+        journey.journeyDate,
       destinationStationCode:
         journey.destinationStationCode,
       destinationStationName:
         journey.destinationStationName,
-      state: journey.state,
+      state:
+        journey.state,
       expectedArrival:
-        journey.currentEta?.toISOString() ?? null,
+        journey.currentEta
+          ?.toISOString() ?? null,
       delayMinutes:
         journey.currentDelayMinutes,
       nextAlert:
-        nextAlert?.toISOString() ?? null,
+        nextAlert?.toISOString() ??
+        null,
+      alertOffsetsMinutes:
+        journey.alertOffsetsMinutes,
     };
   }
 }
