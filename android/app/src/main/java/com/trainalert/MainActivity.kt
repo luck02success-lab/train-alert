@@ -968,7 +968,6 @@ private fun UpcomingJourneyCard(
     journey: Journey,
     onClick: () -> Unit
 ) {
-
     Card(
         modifier =
             Modifier.fillMaxWidth(),
@@ -980,7 +979,6 @@ private fun UpcomingJourneyCard(
                 20.dp
             )
     ) {
-
         Column(
             modifier =
                 Modifier.padding(20.dp)
@@ -998,8 +996,7 @@ private fun UpcomingJourneyCard(
             ) {
 
                 Text(
-                    text =
-                        "UPCOMING",
+                    text = "UPCOMING",
 
                     style =
                         MaterialTheme
@@ -1015,13 +1012,27 @@ private fun UpcomingJourneyCard(
                         FontWeight.Bold
                 )
 
-
                 Text(
                     text =
-                        journey.state
-                            .replaceFirstChar {
-                                it.uppercase()
-                            },
+                        when (journey.state) {
+                            "scheduled" ->
+                                "Not started"
+
+                            "active" ->
+                                "Running"
+
+                            "completed" ->
+                                "Completed"
+
+                            "cancelled" ->
+                                "Cancelled"
+
+                            else ->
+                                journey.state
+                                    .replaceFirstChar {
+                                        it.uppercase()
+                                    }
+                        },
 
                     style =
                         MaterialTheme
@@ -1035,12 +1046,10 @@ private fun UpcomingJourneyCard(
                 )
             }
 
-
             Spacer(
                 modifier =
                     Modifier.height(12.dp)
             )
-
 
             Text(
                 text =
@@ -1055,12 +1064,10 @@ private fun UpcomingJourneyCard(
                     FontWeight.Bold
             )
 
-
             Spacer(
                 modifier =
                     Modifier.height(4.dp)
             )
-
 
             Text(
                 text =
@@ -1079,12 +1086,10 @@ private fun UpcomingJourneyCard(
                         .titleMedium
             )
 
-
             Spacer(
                 modifier =
                     Modifier.height(18.dp)
             )
-
 
             Text(
                 text =
@@ -1100,7 +1105,6 @@ private fun UpcomingJourneyCard(
                 fontWeight =
                     FontWeight.SemiBold
             )
-
 
             journey.expectedArrival
                 ?.takeIf {
@@ -1144,6 +1148,81 @@ private fun UpcomingJourneyCard(
                     )
                 }
 
+            Spacer(
+                modifier =
+                    Modifier.height(10.dp)
+            )
+
+            when (journey.state) {
+
+                "scheduled" -> {
+
+                    Text(
+                        text =
+                            "Train hasn't started yet",
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodyMedium,
+
+                        color =
+                            MaterialTheme
+                                .colorScheme
+                                .onSurfaceVariant,
+
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+                }
+
+                "active" -> {
+
+                    val delay =
+                        journey.delayMinutes
+
+                    Text(
+                        text =
+                            when {
+                                delay == null ->
+                                    "Train is running"
+
+                                delay > 0 ->
+                                    "Running $delay mins late"
+
+                                delay < 0 ->
+                                    "Running ${-delay} mins early"
+
+                                else ->
+                                    "Running on time"
+                            },
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodyMedium,
+
+                        color =
+                            when {
+                                delay != null &&
+                                    delay > 0 ->
+                                    MaterialTheme
+                                        .colorScheme
+                                        .error
+
+                                else ->
+                                    MaterialTheme
+                                        .colorScheme
+                                        .primary
+                            },
+
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+                }
+
+                else -> Unit
+            }
 
             journey.nextAlert
                 ?.takeIf {
@@ -1151,86 +1230,90 @@ private fun UpcomingJourneyCard(
                 }
                 ?.let { alert ->
 
-                    Spacer(
-                        modifier =
-                            Modifier.height(16.dp)
-                    )
-
-                    Card(
-                        modifier =
-                            Modifier.fillMaxWidth(),
-
-                        shape =
-                            RoundedCornerShape(
-                                14.dp
-                            )
+                    if (
+                        journey.state ==
+                            "scheduled"
                     ) {
 
-                        Row(
+                        Spacer(
                             modifier =
-                                Modifier.padding(
-                                    14.dp
-                                ),
+                                Modifier.height(
+                                    16.dp
+                                )
+                        )
 
-                            verticalAlignment =
-                                Alignment.CenterVertically
+                        Card(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+
+                            shape =
+                                RoundedCornerShape(
+                                    14.dp
+                                )
                         ) {
 
-                            Text(
-                                text =
-                                    "🔔",
-
-                                style =
-                                    MaterialTheme
-                                        .typography
-                                        .titleLarge
-                            )
-
-
-                            Spacer(
+                            Row(
                                 modifier =
-                                    Modifier.width(10.dp)
-                            )
+                                    Modifier.padding(
+                                        14.dp
+                                    ),
 
-
-                            Column {
+                                verticalAlignment =
+                                    Alignment.CenterVertically
+                            ) {
 
                                 Text(
-                                    text =
-                                        "Next alert",
+                                    text = "🔔",
 
                                     style =
                                         MaterialTheme
                                             .typography
-                                            .labelMedium
+                                            .titleLarge
                                 )
 
-
-                                Text(
-                                    text =
-                                        formatIstDateTime(
-                                            alert
-                                        ),
-
-                                    style =
-                                        MaterialTheme
-                                            .typography
-                                            .bodyLarge,
-
-                                    fontWeight =
-                                        FontWeight.SemiBold
+                                Spacer(
+                                    modifier =
+                                        Modifier.width(
+                                            10.dp
+                                        )
                                 )
+
+                                Column {
+
+                                    Text(
+                                        text =
+                                            "Next alert",
+
+                                        style =
+                                            MaterialTheme
+                                                .typography
+                                                .labelMedium
+                                    )
+
+                                    Text(
+                                        text =
+                                            formatIstDateTime(
+                                                alert
+                                            ),
+
+                                        style =
+                                            MaterialTheme
+                                                .typography
+                                                .bodyLarge,
+
+                                        fontWeight =
+                                            FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-
             Spacer(
                 modifier =
                     Modifier.height(14.dp)
             )
-
 
             Text(
                 text =

@@ -148,7 +148,14 @@ export class JourneyService {
               live.delayMinutes ??
               null,
             live.observedAt ??
-              new Date()
+              new Date(),
+
+            // Only promote scheduled -> active.
+            // Repository intentionally prevents
+            // accidental active -> scheduled regression.
+            live.status === "running"
+              ? "active"
+              : null
           );
 
       if (!refreshed) {

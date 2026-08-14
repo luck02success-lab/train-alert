@@ -11,7 +11,8 @@ export interface JourneyRepository {
     id: string,
     eta: Date,
     delayMinutes: number | null,
-    observedAt: Date
+    observedAt: Date,
+    providerState: Journey["state"] | null
   ): Promise<Journey | null>;
 
   updateAlertPreferences(
@@ -305,7 +306,8 @@ export class PostgresJourneyRepository
     id: string,
     eta: Date,
     delayMinutes: number | null,
-    observedAt: Date
+    observedAt: Date,
+    providerState: Journey["state"] | null
   ): Promise<Journey | null> {
     return this.db.transaction(
       async (db) => {
@@ -329,6 +331,12 @@ export class PostgresJourneyRepository
                 CASE
                   WHEN $2 <= now()
                     THEN 'completed'::journey_state
+
+                  WHEN
+                    $5 = 'active'::journey_state
+                    AND state = 'scheduled'::journey_state
+                    THEN 'active'::journey_state
+
                   ELSE state
                 END,
 
@@ -351,6 +359,7 @@ export class PostgresJourneyRepository
               eta,
               delayMinutes,
               observedAt,
+              providerState,
             ]
           );
 
@@ -361,11 +370,6 @@ export class PostgresJourneyRepository
           return null;
         }
 
-        /*
-         * Any ETA change creates a new schedule version.
-         *
-         * Any journey completion cancels every pending alert.
-         */
         await db.query(
           `
           UPDATE alerts
@@ -385,11 +389,6 @@ export class PostgresJourneyRepository
           ]
         );
 
-        /*
-         * Only the current schedule version is eligible for
-         * new alerts, and insertAlerts() only creates future
-         * alert times.
-         */
         if (
           row.state !== "completed" &&
           row.currentEta

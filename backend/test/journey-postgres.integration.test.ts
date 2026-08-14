@@ -142,11 +142,15 @@ describe.skipIf(!runIntegration)(
 
           expect(
             created.id
-          ).toBe(journeyId);
+          ).toBe(
+            journeyId
+          );
 
           expect(
             created.userId
-          ).toBe(userId);
+          ).toBe(
+            userId
+          );
 
           expect(
             created.alertOffsetsMinutes
@@ -174,7 +178,9 @@ describe.skipIf(!runIntegration)(
 
           expect(
             initialAlerts.rows
-          ).toHaveLength(4);
+          ).toHaveLength(
+            4
+          );
 
           expect(
             initialAlerts.rows.map(
@@ -198,7 +204,9 @@ describe.skipIf(!runIntegration)(
                 row.state ===
                   "pending"
             )
-          ).toBe(true);
+          ).toBe(
+            true
+          );
 
           // 3. READ
           const found =
@@ -215,7 +223,9 @@ describe.skipIf(!runIntegration)(
           expect(
             found!
               .destinationStationCode
-          ).toBe("NDLS");
+          ).toBe(
+            "NDLS"
+          );
 
           expect(
             found!
@@ -252,7 +262,8 @@ describe.skipIf(!runIntegration)(
                 journeyId,
                 newEta,
                 40,
-                new Date()
+                new Date(),
+                "active"
               );
 
           expect(
@@ -270,7 +281,9 @@ describe.skipIf(!runIntegration)(
           expect(
             refreshed!
               .scheduleVersion
-          ).toBe(1);
+          ).toBe(
+            1
+          );
 
           expect(
             refreshed!
@@ -281,6 +294,13 @@ describe.skipIf(!runIntegration)(
             30,
             15,
           ]);
+
+          expect(
+            refreshed!
+              .state
+          ).toBe(
+            "active"
+          );
 
           // 6. OLD PENDING ALERTS CANCELLED
           const alertsAfterRefresh =
@@ -322,7 +342,9 @@ describe.skipIf(!runIntegration)(
 
           expect(
             oldAlerts
-          ).toHaveLength(1);
+          ).toHaveLength(
+            1
+          );
 
           expect(
             oldAlerts[0].state
@@ -332,11 +354,15 @@ describe.skipIf(!runIntegration)(
 
           expect(
             oldAlerts[0].count
-          ).toBe(4);
+          ).toBe(
+            4
+          );
 
           expect(
             newAlerts
-          ).toHaveLength(1);
+          ).toHaveLength(
+            1
+          );
 
           expect(
             newAlerts[0].state
@@ -346,7 +372,9 @@ describe.skipIf(!runIntegration)(
 
           expect(
             newAlerts[0].count
-          ).toBe(4);
+          ).toBe(
+            4
+          );
 
           // 7. USER CHANGES ALERT PREFERENCES
           const updated =
@@ -372,7 +400,9 @@ describe.skipIf(!runIntegration)(
           expect(
             updated!
               .scheduleVersion
-          ).toBe(2);
+          ).toBe(
+            2
+          );
 
           const alertsAfterPreferences =
             await raw.query(
@@ -422,7 +452,9 @@ describe.skipIf(!runIntegration)(
                   row.state ===
                   "pending"
               )
-          ).toBe(true);
+          ).toBe(
+            true
+          );
 
           // 8. PRESERVE SENT HISTORY
           await raw.query(
@@ -480,11 +512,15 @@ describe.skipIf(!runIntegration)(
 
           expect(
             counts.get("sent")
-          ).toBe(1);
+          ).toBe(
+            1
+          );
 
           expect(
             counts.get("cancelled")
-          ).toBe(9);
+          ).toBe(
+            9
+          );
 
           // 10. TERMINAL JOURNEY
           // CANNOT BE CANCELLED AGAIN
