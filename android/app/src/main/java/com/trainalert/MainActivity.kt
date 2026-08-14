@@ -682,7 +682,7 @@ private fun HomeHeader(
 
         Text(
             text =
-                "Train Alert",
+                "RailWake",
 
             style =
                 MaterialTheme
@@ -723,42 +723,33 @@ private fun HomeHeader(
 
 
         Text(
-            text =
-                if (journeyCount == 0) {
-                    "Your journey,\nwithout the worry."
-                } else {
-                    "Ready for your next journey?"
-                },
+    text =
+        "Wake up before your stop.",
 
-            style =
-                MaterialTheme
-                    .typography
-                    .headlineMedium,
+    style =
+        MaterialTheme
+            .typography
+            .headlineMedium,
 
-            fontWeight =
-                FontWeight.Bold
-        )
+    fontWeight =
+        FontWeight.Bold
+)
 
+Spacer(
+    modifier =
+        Modifier.height(8.dp)
+)
 
-        Spacer(
-            modifier =
-                Modifier.height(8.dp)
-        )
+Text(
+    text =
+        "We'll keep an eye on your journey and let you know\nwhen it's time to get ready.",
 
+    style =
+        MaterialTheme
+            .typography
+            .bodyLarge
+)
 
-        Text(
-            text =
-                if (journeyCount == 0) {
-                    "Add your train once. We'll remind you before you reach your destination."
-                } else {
-                    "We'll keep an eye on your journey and let you know when it's time to get ready."
-                },
-
-            style =
-                MaterialTheme
-                    .typography
-                    .bodyLarge
-        )
     }
 }
 

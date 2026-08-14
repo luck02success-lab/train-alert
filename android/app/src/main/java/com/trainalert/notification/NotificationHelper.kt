@@ -10,26 +10,22 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+
 import com.trainalert.MainActivity
 import com.trainalert.R
 
+
 object NotificationHelper {
 
-    /*
-     * We intentionally use a new channel ID instead of
-     * the previous "train_alerts" channel.
-     *
-     * Android permanently persists channel behavior once
-     * a channel has been created.
-     */
     private const val CHANNEL_ID =
         "train_alert_alarm_v2"
 
     private const val CHANNEL_NAME =
-        "Train Stop Alerts"
+        "RailWake Alerts"
 
     private const val CHANNEL_DESCRIPTION =
         "Important alerts when your train is approaching your destination."
@@ -68,14 +64,6 @@ object NotificationHelper {
                 NotificationManager::class.java
             )
 
-        /*
-         * The alarm/notification sound is selected from
-         * the device's default alarm sound.
-         *
-         * USAGE_ALARM makes the intent semantically closer
-         * to an alarm/reminder notification rather than
-         * a normal informational notification.
-         */
         val alarmSound =
             RingtoneManager.getDefaultUri(
                 RingtoneManager.TYPE_ALARM
@@ -101,7 +89,9 @@ object NotificationHelper {
                 description =
                     CHANNEL_DESCRIPTION
 
-                enableVibration(true)
+                enableVibration(
+                    true
+                )
 
                 vibrationPattern =
                     VIBRATION_PATTERN
@@ -111,13 +101,9 @@ object NotificationHelper {
                     audioAttributes
                 )
 
-                /*
-                 * We don't use full-screen intents.
-                 * The notification remains user-controlled
-                 * and appears as a high-importance heads-up
-                 * notification.
-                 */
-                setShowBadge(true)
+                setShowBadge(
+                    true
+                )
 
                 lockscreenVisibility =
                     NotificationCompat
@@ -147,7 +133,9 @@ object NotificationHelper {
             return
         }
 
-        createChannel(context)
+        createChannel(
+            context
+        )
 
         val contentIntent =
             Intent(
@@ -182,12 +170,6 @@ object NotificationHelper {
                     PendingIntent.FLAG_IMMUTABLE
             )
 
-        /*
-         * Dismiss action.
-         *
-         * This only removes the notification from the
-         * device. It does not cancel the user's journey.
-         */
         val dismissIntent =
             Intent(
                 DISMISS_ACTION
@@ -221,13 +203,16 @@ object NotificationHelper {
                     R.drawable.ic_train_alert
                 )
                 .setContentTitle(
-                    title
+                    title.ifBlank {
+                        "RailWake"
+                    }
                 )
                 .setContentText(
                     body
                 )
                 .setStyle(
-                    NotificationCompat.BigTextStyle()
+                    NotificationCompat
+                        .BigTextStyle()
                         .bigText(body)
                 )
                 .setPriority(
@@ -239,7 +224,9 @@ object NotificationHelper {
                 .setVisibility(
                     NotificationCompat.VISIBILITY_PUBLIC
                 )
-                .setAutoCancel(true)
+                .setAutoCancel(
+                    true
+                )
                 .setContentIntent(
                     contentPendingIntent
                 )
@@ -253,7 +240,9 @@ object NotificationHelper {
                 .setWhen(
                     System.currentTimeMillis()
                 )
-                .setShowWhen(true)
+                .setShowWhen(
+                    true
+                )
                 .build()
 
         try {
@@ -267,8 +256,8 @@ object NotificationHelper {
             securityException:
             SecurityException
         ) {
-            // Notification permission may have been
-            // revoked while the app was running.
+            // Notification permission may have been revoked
+            // while the app was running.
         }
     }
 

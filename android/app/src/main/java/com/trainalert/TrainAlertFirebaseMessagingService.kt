@@ -1,11 +1,12 @@
 package com.trainalert
 
-import android.os.Build
 import android.util.Log
-import androidx.core.app.NotificationManagerCompat
+
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+
 import com.trainalert.notification.NotificationHelper
+
 
 class TrainAlertFirebaseMessagingService :
     FirebaseMessagingService() {
@@ -13,7 +14,7 @@ class TrainAlertFirebaseMessagingService :
     companion object {
 
         private const val TAG =
-            "TrainAlertFCM"
+            "RailWakeFCM"
 
         const val OPEN_JOURNEY_ACTION =
             "com.trainalert.OPEN_JOURNEY"
@@ -34,7 +35,9 @@ class TrainAlertFirebaseMessagingService :
     override fun onNewToken(
         token: String
     ) {
-        super.onNewToken(token)
+        super.onNewToken(
+            token
+        )
 
         if (
             token.isBlank()
@@ -49,7 +52,7 @@ class TrainAlertFirebaseMessagingService :
 
         Log.i(
             TAG,
-            "FCM token refreshed"
+            "RailWake FCM token refreshed"
         )
 
         DeviceRegistrationManager
@@ -68,7 +71,7 @@ class TrainAlertFirebaseMessagingService :
 
         Log.i(
             TAG,
-            "FCM message received"
+            "RailWake FCM message received"
         )
 
         val notification =
@@ -80,7 +83,7 @@ class TrainAlertFirebaseMessagingService :
         val title =
             notification?.title
                 ?: data[TITLE_KEY]
-                ?: "Train Alert"
+                ?: "RailWake"
 
         val body =
             notification?.body
@@ -115,7 +118,7 @@ class TrainAlertFirebaseMessagingService :
 
         Log.i(
             TAG,
-            "Notification displayed"
+            "RailWake notification displayed"
         )
     }
 
