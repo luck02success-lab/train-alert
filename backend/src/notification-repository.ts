@@ -129,8 +129,8 @@ export class PostgresNotificationRepository
   limit: number
 ): Promise<DueAlert[]> {
   /*
-   * Recover deliveries that were left in sending
-   * because a worker crashed or timed out.
+   * Recover deliveries that were left in "sending" because
+   * a worker crashed or timed out.
    */
   await this.db.query(
     `
@@ -151,12 +151,14 @@ export class PostgresNotificationRepository
   );
 
   /*
-   * Retry existing deliveries first.
+   * ----------------------------------------------------------
+   * RETRIES
+   * ----------------------------------------------------------
    *
-   * IMPORTANT:
-   * DISTINCT ON is performed inside the CTE.
-   * FOR UPDATE SKIP LOCKED is applied by the outer
-   * SELECT, avoiding PostgreSQL's:
+   * First select candidate IDs with DISTINCT ON.
+   * Then lock the actual alert rows in the outer SELECT.
+   *
+   * This avoids PostgreSQL:
    *
    *   FOR UPDATE is not allowed with DISTINCT clause
    */
@@ -164,35 +166,39 @@ export class PostgresNotificationRepository
     await this.db.query<AlertRow>(
       `
       WITH retry_candidates AS (
-        SELECT DISTINCT ON (a.journey_id)
-          a.id
-        FROM alerts a
-        JOIN journeys j
-          ON j.id = a.journey_id
-        WHERE
-          a.state = 'sending'
-          AND j.state IN (
-            'scheduled',
-            'active'
-          )
-          AND a.schedule_version =
-            j.schedule_version
-          AND EXISTS (
-            SELECT 1
-            FROM notification_deliveries d
-            WHERE d.alert_id = a.id
-              AND d.state IN (
-                'pending',
-                'failed'
-              )
-              AND (
-                d.next_attempt_at IS NULL
-                OR d.next_attempt_at <= now()
-              )
-          )
-        ORDER BY
-          a.journey_id,
-          a.scheduled_for DESC
+        SELECT id
+        FROM (
+          SELECT DISTINCT ON (a.journey_id)
+            a.id
+          FROM alerts a
+          JOIN journeys j
+            ON j.id = a.journey_id
+          WHERE
+            a.state = 'sending'
+            AND j.state IN (
+              'scheduled',
+              'active'
+            )
+            AND a.schedule_version =
+              j.schedule_version
+            AND EXISTS (
+              SELECT 1
+              FROM notification_deliveries d
+              WHERE d.alert_id = a.id
+                AND d.state IN (
+                  'pending',
+                  'failed'
+                )
+                AND (
+                  d.next_attempt_at IS NULL
+                  OR d.next_attempt_at <= now()
+                )
+            )
+          ORDER BY
+            a.journey_id,
+            a.scheduled_for DESC
+          LIMIT $1
+        ) candidates
       )
       SELECT
         a.id,
@@ -209,7 +215,6 @@ export class PostgresNotificationRepository
       JOIN journeys j
         ON j.id = a.journey_id
       FOR UPDATE OF a SKIP LOCKED
-      LIMIT $1
       `,
       [limit]
     );
@@ -221,68 +226,85 @@ export class PostgresNotificationRepository
   }
 
   /*
-   * New due alerts:
+   * ----------------------------------------------------------
+   * NEW DUE ALERTS
+   * ----------------------------------------------------------
    *
-   * - only current schedule version
-   * - only scheduled/active journeys
-   * - only one due alert per journey
-   * - latest due alert wins
-   * - suppress a new notification when another
-   *   notification was successfully sent within
-   *   the previous 15 minutes
+   * Important:
+   * The outer query has NO parameters.
+   *
+   * The limit is applied inside due_candidates where $1
+   * actually exists.
    */
   const result =
     await this.db.query<AlertRow>(
       `
       WITH due_candidates AS (
-        SELECT DISTINCT ON (a.journey_id)
-          a.id,
-          a.journey_id,
-          a.offset_minutes,
-          a.scheduled_for
-        FROM alerts a
-        JOIN journeys j
-          ON j.id = a.journey_id
-        WHERE
-          a.state = 'pending'
-          AND a.scheduled_for <= now()
-          AND j.state IN (
-            'scheduled',
-            'active'
-          )
-          AND a.schedule_version =
-            j.schedule_version
+        SELECT *
+        FROM (
+          SELECT DISTINCT ON (a.journey_id)
+            a.id,
+            a.journey_id,
+            a.offset_minutes,
+            a.scheduled_for
+          FROM alerts a
+          JOIN journeys j
+            ON j.id = a.journey_id
+          WHERE
+            a.state = 'pending'
+            AND a.scheduled_for <= now()
+            AND j.state IN (
+              'scheduled',
+              'active'
+            )
+            AND a.schedule_version =
+              j.schedule_version
 
-          AND NOT EXISTS (
-            SELECT 1
-            FROM notification_deliveries d
-            JOIN alerts sent_alert
-              ON sent_alert.id =
-                d.alert_id
-            WHERE sent_alert.journey_id =
-                  a.journey_id
-              AND d.state = 'sent'
-              AND d.sent_at IS NOT NULL
-              AND d.sent_at >
-                now() - interval '15 minutes'
-          )
+            /*
+             * Minimum 15-minute gap between
+             * successfully delivered notifications
+             * for the same journey.
+             */
+            AND NOT EXISTS (
+              SELECT 1
+              FROM notification_deliveries d
+              JOIN alerts sent_alert
+                ON sent_alert.id =
+                  d.alert_id
+              WHERE sent_alert.journey_id =
+                    a.journey_id
+                AND d.state = 'sent'
+                AND d.sent_at IS NOT NULL
+                AND d.sent_at >
+                  now() - interval '15 minutes'
+            )
 
-        ORDER BY
-          a.journey_id,
-          a.scheduled_for DESC
+          ORDER BY
+            a.journey_id,
+            a.scheduled_for DESC
+
+          LIMIT $1
+        ) candidates
       ),
+
+      /*
+       * Atomically claim the selected alerts.
+       */
       claimed AS (
         UPDATE alerts a
         SET
           state = 'sending'
         FROM due_candidates c
-        WHERE a.id = c.id
+        WHERE
+          a.id = c.id
+          AND a.state = 'pending'
         RETURNING
           a.id,
           a.journey_id,
           a.offset_minutes,
           a.scheduled_for
       )
+
       SELECT
         c.id,
         c.journey_id AS "journeyId",
@@ -300,9 +322,13 @@ export class PostgresNotificationRepository
     );
 
   /*
-   * If multiple pending alerts for the same journey became due
-   * together, keep only the newest claimed alert. Older due
-   * alerts should not be delivered after it.
+   * ----------------------------------------------------------
+   * CANCEL OLDER DUE ALERTS
+   * ----------------------------------------------------------
+   *
+   * If multiple alerts became due since the last cron run,
+   * only the newest one should be delivered. This also
+   * reinforces our minimum notification-spacing rule.
    */
   if (
     result.rows.length > 0
@@ -321,15 +347,22 @@ export class PostgresNotificationRepository
       UPDATE alerts a
       SET
         state = 'cancelled'
-      WHERE a.journey_id =
-        ANY($1::uuid[])
+      WHERE
+        a.journey_id =
+          ANY($1::uuid[])
         AND a.state = 'pending'
         AND a.scheduled_for <= now()
+
+        /*
+         * Never cancel the alert currently being processed.
+         */
         AND NOT EXISTS (
           SELECT 1
           FROM alerts current_alert
-          WHERE current_alert.id = a.id
-            AND current_alert.state = 'sending'
+          WHERE
+            current_alert.id = a.id
+            AND current_alert.state =
+              'sending'
         )
       `,
       [journeyIds]
