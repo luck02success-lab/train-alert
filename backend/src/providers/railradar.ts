@@ -1,4 +1,6 @@
 export interface TrainLiveStop {
+  sequence?: number | null;
+
   stationCode: string;
   stationName: string;
 
@@ -13,28 +15,108 @@ export interface TrainLiveStop {
 
   delayMinutes: number | null;
   status: string | null;
+
+  isHalt?: boolean;
+  distance?: number | null;
+  speedToNextStationKmph?: number | null;
+  platform?: string | null;
+}
+
+export interface TrainException {
+  type: string;
+  message: string;
 }
 
 export interface TrainLiveStatus {
   trainNumber: string;
+  trainName?: string | null;
   journeyDate: string;
 
   status:
     | "running"
     | "not-started"
     | "completed"
+    | "cancelled"
     | "unknown";
 
   currentStation: string | null;
   currentStationCode: string | null;
+
   previousStation: string | null;
+  previousStationCode?: string | null;
+  previousStationSequence?: number | null;
+
   nextStation: string | null;
+  nextStationCode?: string | null;
+  nextStationSequence?: number | null;
+
+  currentSequence?: number | null;
+
+  isActualPosition?: boolean;
+  isDiverted?: boolean;
+  segmentProgress?: number | null;
+  speedKmh?: number | null;
 
   delayMinutes: number | null;
+
   latitude: number | null;
   longitude: number | null;
 
   observedAt?: Date;
+
+  stops: TrainLiveStop[];
+
+  destinationLiveType?:
+    | "at-station"
+    | "upcoming"
+    | "departed"
+    | "scheduled"
+    | null;
+
+  destinationLiveExpectedArrival?: string | null;
+  destinationLiveExpectedDeparture?: string | null;
+  destinationLiveDelayMinutes?: number | null;
+
+  exceptions?: TrainException[];
+}
+
+export interface StationLiveTrain {
+  trainNumber: string;
+  trainName: string | null;
+
+  status:
+    | "at-station"
+    | "upcoming"
+    | "departed"
+    | "scheduled"
+    | "unknown";
+
+  sequence: number | null;
+
+  expectedArrivalTime: string | null;
+  expectedDepartureTime: string | null;
+
+  delayMinutes: number | null;
+
+  platform: string | null;
+}
+
+export interface StationLiveBoard {
+  stationCode: string;
+  stationName: string;
+  trains: StationLiveTrain[];
+}
+
+export interface TrainDetails {
+  trainNumber: string;
+  trainName: string | null;
+  sourceCode: string | null;
+  destinationCode: string | null;
+
+  runDays: string[];
+
+  distanceKm: number | null;
+  durationMinutes: number | null;
 
   stops: TrainLiveStop[];
 }
@@ -44,10 +126,12 @@ export class ProviderError extends Error {
     readonly code:
       | "UNAUTHORIZED"
       | "TRAIN_NOT_FOUND"
+      | "STATION_NOT_FOUND"
       | "RATE_LIMITED"
       | "UNAVAILABLE"
       | "MALFORMED_RESPONSE",
-    message = "Railway data is currently unavailable."
+    message =
+      "Railway data is currently unavailable."
   ) {
     super(message);
   }
@@ -56,67 +140,233 @@ export class ProviderError extends Error {
 type Json = Record<string, unknown>;
 
 function object(value: unknown): Json {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new ProviderError("MALFORMED_RESPONSE");
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    throw new ProviderError(
+      "MALFORMED_RESPONSE"
+    );
   }
 
   return value as Json;
 }
 
-function string(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function number(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value)
+function string(
+  value: unknown
+): string | null {
+  return typeof value === "string"
     ? value
     : null;
 }
 
-function dateString(value: unknown): string | null {
-  const valueString = string(value);
+function number(
+  value: unknown
+): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value)
+    ? value
+    : null;
+}
 
-  if (!valueString) {
+function boolean(
+  value: unknown
+): boolean {
+  return typeof value === "boolean"
+    ? value
+    : false;
+}
+
+function dateString(
+  value: unknown
+): string | null {
+  const raw = string(value);
+
+  if (!raw) {
     return null;
   }
 
-  const parsed = new Date(valueString);
+  const parsed = new Date(raw);
 
-  return Number.isNaN(parsed.getTime())
+  return Number.isNaN(
+    parsed.getTime()
+  )
     ? null
-    : valueString;
+    : raw;
+}
+
+function parseTrainStatus(
+  value: unknown
+): TrainLiveStatus["status"] {
+  const raw = string(value);
+
+  if (
+    raw === "running" ||
+    raw === "not-started" ||
+    raw === "completed" ||
+    raw === "cancelled"
+  ) {
+    return raw;
+  }
+
+  return "unknown";
+}
+
+function parseStationLiveType(
+  value: unknown
+): StationLiveTrain["status"] {
+  const raw = string(value);
+
+  if (
+    raw === "at-station" ||
+    raw === "upcoming" ||
+    raw === "departed" ||
+    raw === "scheduled"
+  ) {
+    return raw;
+  }
+
+  return "unknown";
+}
+
+function parseStop(
+  rawStop: unknown
+): TrainLiveStop {
+  const stop = object(rawStop);
+
+  const stationCode =
+    string(
+      stop.stationCode
+    );
+
+  if (!stationCode) {
+    throw new ProviderError(
+      "MALFORMED_RESPONSE"
+    );
+  }
+
+  return {
+    sequence:
+      number(
+        stop.sequence
+      ),
+
+    stationCode,
+
+    stationName:
+      string(
+        stop.stationName
+      ) ?? "",
+
+    isHalt:
+      boolean(
+        stop.isHalt
+      ),
+
+    scheduledArrival:
+      dateString(
+        stop.scheduledArrival
+      ),
+
+    scheduledDeparture:
+      dateString(
+        stop.scheduledDeparture
+      ),
+
+    expectedArrival:
+      dateString(
+        stop.expectedArrival
+      ),
+
+    expectedDeparture:
+      dateString(
+        stop.expectedDeparture
+      ),
+
+    actualArrival:
+      dateString(
+        stop.actualArrival
+      ),
+
+    actualDeparture:
+      dateString(
+        stop.actualDeparture
+      ),
+
+    delayMinutes:
+      number(
+        stop.delayArrival
+      ) ??
+      number(
+        stop.delayDeparture
+      ) ??
+      number(
+        stop.delayMinutes
+      ),
+
+    status:
+      string(
+        stop.status
+      ),
+
+    distance:
+      number(
+        stop.distance
+      ),
+
+    speedToNextStationKmph:
+      number(
+        stop.speedToNextStationKmph
+      ),
+
+    platform:
+      string(
+        stop.platform
+      ),
+  };
 }
 
 export class RailRadarProvider {
   constructor(
-    private readonly apiKey = process.env.RAILRADAR_API_KEY,
-    private readonly fetcher: typeof fetch = fetch
+    private readonly apiKey =
+      process.env.RAILRADAR_API_KEY,
+
+    private readonly fetcher:
+      typeof fetch = fetch
   ) {
     if (!apiKey) {
-      throw new Error("RAILRADAR_API_KEY is required");
+      throw new Error(
+        "RAILRADAR_API_KEY is required"
+      );
     }
   }
 
-  async getLiveTrain(
-    trainNumber: string,
-    journeyDate: string
-  ): Promise<TrainLiveStatus> {
+  private async request(
+    url: string
+  ): Promise<Json> {
     let response: Response;
 
     try {
-      response = await this.fetcher(
-        `https://api.railradar.in/v1/trains/${encodeURIComponent(
-          trainNumber
-        )}/live?date=${encodeURIComponent(journeyDate)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-          },
-          signal: AbortSignal.timeout(8_000),
-        }
-      );
+      response =
+        await this.fetcher(
+          url,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${this.apiKey}`,
+            },
+
+            signal:
+              AbortSignal.timeout(
+                8_000
+              ),
+          }
+        );
     } catch {
-      throw new ProviderError("UNAVAILABLE");
+      throw new ProviderError(
+        "UNAVAILABLE"
+      );
     }
 
     if (!response.ok) {
@@ -131,92 +381,130 @@ export class RailRadarProvider {
       );
     }
 
-    let body: Json;
-
     try {
-      body = object(await response.json());
-    } catch (error) {
-      if (error instanceof ProviderError) {
-        throw error;
-      }
+      return object(
+        await response.json()
+      );
+    } catch {
+      throw new ProviderError(
+        "MALFORMED_RESPONSE"
+      );
+    }
+  }
 
-      throw new ProviderError("MALFORMED_RESPONSE");
+  async getLiveTrain(
+    trainNumber: string,
+    journeyDate?: string
+  ): Promise<TrainLiveStatus> {
+    const dateQuery =
+      journeyDate
+        ? `?date=${encodeURIComponent(
+            journeyDate
+          )}&haltsOnly=true`
+        : "?haltsOnly=true";
+
+    const body =
+      await this.request(
+        `https://api.railradar.in/v1/trains/${encodeURIComponent(
+          trainNumber
+        )}/live${dateQuery}`
+      );
+
+    const data =
+      object(body.data);
+
+    const currentLocation =
+      data.currentLocation
+        ? object(
+            data.currentLocation
+          )
+        : {};
+
+    const previousHalt =
+      data.previousHalt
+        ? object(
+            data.previousHalt
+          )
+        : null;
+
+    const nextHalt =
+      data.nextHalt
+        ? object(
+            data.nextHalt
+          )
+        : null;
+
+    const rawRoute =
+      Array.isArray(
+        data.route
+      )
+        ? data.route
+        : [];
+
+    if (
+      rawRoute.length === 0
+    ) {
+      throw new ProviderError(
+        "MALFORMED_RESPONSE"
+      );
     }
 
-    const data = object(body.data);
+    const stops =
+      rawRoute.map(
+        parseStop
+      );
 
-    const rawRoute = Array.isArray(data.route)
-      ? data.route
-      : [];
+    const rawExceptions =
+      Array.isArray(
+        data.exceptions
+      )
+        ? data.exceptions
+        : [];
 
-    if (rawRoute.length === 0) {
-      throw new ProviderError("MALFORMED_RESPONSE");
-    }
+    const exceptions:
+      TrainException[] =
+      rawExceptions.map(
+        (
+          rawException
+        ) => {
+          const exception =
+            object(
+              rawException
+            );
 
-    const stops: TrainLiveStop[] = rawRoute.map(
-      (rawStop) => {
-        const stop = object(rawStop);
+          return {
+            type:
+              string(
+                exception.type
+              ) ??
+              "UNKNOWN",
 
-        const stationCode = string(
-          stop.stationCode
-        );
-
-        if (!stationCode) {
-          throw new ProviderError(
-            "MALFORMED_RESPONSE"
-          );
+            message:
+              string(
+                exception.message
+              ) ??
+              "Train route exception reported by provider.",
+          };
         }
-
-        return {
-          stationCode,
-          stationName:
-            string(stop.stationName) ?? "",
-
-          scheduledArrival:
-            dateString(stop.scheduledArrival),
-
-          scheduledDeparture:
-            dateString(stop.scheduledDeparture),
-
-          expectedArrival:
-            dateString(stop.expectedArrival),
-
-          expectedDeparture:
-            dateString(stop.expectedDeparture),
-
-          actualArrival:
-            dateString(stop.actualArrival),
-
-          actualDeparture:
-            dateString(stop.actualDeparture),
-
-          delayMinutes:
-            number(stop.delayArrival) ??
-            number(stop.delayDeparture),
-
-          status:
-            string(stop.status),
-        };
-      }
-    );
-
-    const rawStatus = string(data.status);
-
-    const status: TrainLiveStatus["status"] =
-      rawStatus === "running" ||
-      rawStatus === "not-started" ||
-      rawStatus === "completed"
-        ? rawStatus
-        : "unknown";
+      );
 
     const observedAtRaw =
-      string(data.lastUpdatedAt);
+      string(
+        data.lastUpdatedAt
+      );
 
-    const observedAt = observedAtRaw
-      ? new Date(observedAtRaw)
-      : new Date();
+    const observedAt =
+      observedAtRaw
+        ? new Date(
+            observedAtRaw
+          )
+        : new Date();
 
-    if (Number.isNaN(observedAt.getTime())) {
+    if (
+      Number.isNaN(
+        observedAt.getTime()
+      )
+    ) {
       throw new ProviderError(
         "MALFORMED_RESPONSE"
       );
@@ -224,37 +512,598 @@ export class RailRadarProvider {
 
     return {
       trainNumber:
-        string(data.trainNumber) ??
+        string(
+          data.trainNumber
+        ) ??
         trainNumber,
 
-      journeyDate,
+      trainName:
+        string(
+          data.trainName
+        ),
 
-      status,
+      journeyDate:
+        string(
+          data.startDate
+        ) ??
+        journeyDate ??
+        observedAt
+          .toISOString()
+          .slice(
+            0,
+            10
+          ),
+
+      status:
+        parseTrainStatus(
+          data.status
+        ),
 
       currentStation:
-        string(data.currentStation),
+        string(
+          currentLocation.stationName
+        ) ??
+        string(
+          data.currentStation
+        ),
 
       currentStationCode:
-        string(data.currentStationCode),
+        string(
+          currentLocation.stationCode
+        ) ??
+        string(
+          data.currentStationCode
+        ),
 
       previousStation:
-        string(data.previousStation),
+        string(
+          previousHalt?.stationName
+        ) ??
+        string(
+          data.previousStation
+        ),
+
+      previousStationCode:
+        string(
+          previousHalt?.stationCode
+        ),
+
+      previousStationSequence:
+        number(
+          previousHalt?.sequence
+        ),
 
       nextStation:
-        string(data.nextStation),
+        string(
+          nextHalt?.stationName
+        ) ??
+        string(
+          data.nextStation
+        ),
+
+      nextStationCode:
+        string(
+          nextHalt?.stationCode
+        ),
+
+      nextStationSequence:
+        number(
+          nextHalt?.sequence
+        ),
+
+      currentSequence:
+        number(
+          currentLocation.sequence
+        ),
+
+      isActualPosition:
+        boolean(
+          currentLocation
+            .isActualPosition
+        ),
+
+      isDiverted:
+        boolean(
+          currentLocation
+            .isDiverted
+        ),
+
+      segmentProgress:
+        number(
+          currentLocation
+            .segmentProgress
+        ),
+
+      speedKmh:
+        number(
+          currentLocation.speedKmh
+        ),
 
       delayMinutes:
-        number(data.delayMinutes),
+        number(
+          data.delayMinutes
+        ),
 
       latitude:
-        number(data.latitude),
+        number(
+          currentLocation.lat
+        ) ??
+        number(
+          currentLocation.latitude
+        ),
 
       longitude:
-        number(data.longitude),
+        number(
+          currentLocation.lng
+        ) ??
+        number(
+          currentLocation.longitude
+        ),
 
       observedAt,
 
       stops,
+
+      exceptions,
     };
   }
+
+  async getStationLiveBoard(
+    stationCode: string,
+    hoursAhead = 4
+  ): Promise<StationLiveBoard> {
+    const safeHours =
+      [2, 4, 6, 8].includes(
+        hoursAhead
+      )
+        ? hoursAhead
+        : 4;
+
+    try {
+      const body =
+        await this.request(
+          `https://api.railradar.in/v1/stations/${encodeURIComponent(
+            stationCode.toUpperCase()
+          )}/live?hours=${safeHours}&includeIntermediate=false`
+        );
+
+      const data =
+        object(body.data);
+
+      const station =
+        data.station
+          ? object(
+              data.station
+            )
+          : {};
+
+      const rawTrains =
+        Array.isArray(
+          data.trains
+        )
+          ? data.trains
+          : [];
+
+      const trains =
+        rawTrains
+          .map(
+            (
+              rawTrain
+            ) => {
+              const entry =
+                object(
+                  rawTrain
+                );
+
+              const train =
+                entry.train
+                  ? object(
+                      entry.train
+                    )
+                  : {};
+
+              const stop =
+                entry.stop
+                  ? object(
+                      entry.stop
+                    )
+                  : {};
+
+              const live =
+                entry.live
+                  ? object(
+                      entry.live
+                    )
+                  : {};
+
+              return {
+                trainNumber:
+                  string(
+                    train.number
+                  ) ?? "",
+
+                trainName:
+                  string(
+                    train.name
+                  ),
+
+                status:
+                  parseStationLiveType(
+                    live.type
+                  ),
+
+                sequence:
+                  number(
+                    stop.sequence
+                  ),
+
+                expectedArrivalTime:
+                  dateString(
+                    live.expectedArrivalTime
+                  ),
+
+                expectedDepartureTime:
+                  dateString(
+                    live.expectedDepartureTime
+                  ),
+
+                delayMinutes:
+                  number(
+                    live.delayMinutes
+                  ),
+
+                platform:
+                  string(
+                    live.platform
+                  ),
+              } satisfies StationLiveTrain;
+            }
+          )
+          .filter(
+            (
+              item
+            ) =>
+              item.trainNumber
+                .length > 0
+          );
+
+      return {
+        stationCode:
+          string(
+            station.code
+          ) ??
+          stationCode,
+
+        stationName:
+          string(
+            station.name
+          ) ??
+          stationCode,
+
+        trains,
+      };
+    } catch (error) {
+      if (
+        error instanceof
+        ProviderError
+      ) {
+        if (
+          error.code ===
+          "TRAIN_NOT_FOUND"
+        ) {
+          throw new ProviderError(
+            "STATION_NOT_FOUND",
+            "Live station board is unavailable."
+          );
+        }
+
+        throw error;
+      }
+
+      throw error;
+    }
+  }
+
+  async enrichDestinationWhenSuspicious(
+    live: TrainLiveStatus,
+    destinationCode: string,
+    now = new Date()
+  ): Promise<TrainLiveStatus> {
+    const destination =
+      live.stops.find(
+        (stop) =>
+          stop.stationCode ===
+          destinationCode
+      );
+
+    if (!destination) {
+      return live;
+    }
+
+    const expectedRaw =
+      destination.expectedArrival;
+
+    const expected =
+      parseDateSafe(
+        expectedRaw
+      );
+
+    const expectedIsPast =
+      expected !== null &&
+      expected.getTime() <=
+        now.getTime();
+
+    const actualReached =
+      Boolean(
+        destination.actualArrival ||
+        destination.actualDeparture
+      );
+
+    const stopStatus =
+      destination.status
+        ?.toLowerCase();
+
+    const suspicious =
+      !expected ||
+      (
+        expectedIsPast &&
+        !actualReached
+      ) ||
+      (
+        (
+          stopStatus ===
+            "upcoming" ||
+          stopStatus ===
+            "scheduled"
+        ) &&
+        expectedIsPast
+      );
+
+    if (!suspicious) {
+      return live;
+    }
+
+    let board:
+      StationLiveBoard;
+
+    try {
+      board =
+        await this.getStationLiveBoard(
+          destinationCode,
+          4
+        );
+    } catch (error) {
+      /*
+       * A station-board failure is not evidence that the
+       * destination has been reached.
+       */
+      console.warn(
+        "Destination station board unavailable",
+        {
+          trainNumber:
+            live.trainNumber,
+          destinationCode,
+          error,
+        }
+      );
+
+      return live;
+    }
+
+    const stationTrain =
+      board.trains.find(
+        (train) =>
+          train.trainNumber ===
+          live.trainNumber
+      );
+
+    if (!stationTrain) {
+      /*
+       * Absence from the board is not proof of arrival.
+       */
+      return live;
+    }
+
+    const destinationLiveType =
+      stationTrain.status ===
+        "unknown"
+        ? null
+        : stationTrain.status;
+
+    return {
+      ...live,
+
+      destinationLiveType,
+
+      destinationLiveExpectedArrival:
+        stationTrain
+          .expectedArrivalTime,
+
+      destinationLiveExpectedDeparture:
+        stationTrain
+          .expectedDepartureTime,
+
+      destinationLiveDelayMinutes:
+        stationTrain
+          .delayMinutes,
+
+      stops:
+        live.stops.map(
+          (stop) =>
+            stop.stationCode ===
+            destinationCode
+              ? {
+                  ...stop,
+
+                  expectedArrival:
+                    stationTrain
+                      .expectedArrivalTime ??
+                    stop.expectedArrival,
+
+                  expectedDeparture:
+                    stationTrain
+                      .expectedDepartureTime ??
+                    stop.expectedDeparture,
+
+                  delayMinutes:
+                    stationTrain
+                      .delayMinutes ??
+                    stop.delayMinutes,
+
+                  status:
+                    stationTrain
+                      .status ===
+                      "upcoming"
+                      ? "upcoming"
+                      : stationTrain
+                          .status ===
+                          "scheduled"
+                        ? "scheduled"
+                        : stop.status,
+                }
+              : stop
+        ),
+    };
+  }
+
+  async getTrainDetails(
+    trainNumber: string,
+    journeyDate?: string
+  ): Promise<TrainDetails> {
+    const dateQuery =
+      journeyDate
+        ? `&journeyDate=${encodeURIComponent(
+            journeyDate
+          )}`
+        : "";
+
+    const body =
+      await this.request(
+        `https://api.railradar.in/v1/legacy/trains/${encodeURIComponent(
+          trainNumber
+        )}?dataType=full&dataProvider=railradar${dateQuery}`
+      );
+
+    return this.parseTrainDetails(
+      body,
+      trainNumber
+    );
+  }
+
+  async getTrainDetailsFromNtes(
+    trainNumber: string,
+    journeyDate?: string
+  ): Promise<TrainDetails> {
+    const dateQuery =
+      journeyDate
+        ? `&journeyDate=${encodeURIComponent(
+            journeyDate
+          )}`
+        : "";
+
+    const body =
+      await this.request(
+        `https://api.railradar.in/v1/legacy/trains/${encodeURIComponent(
+          trainNumber
+        )}?dataType=full&dataProvider=NTES${dateQuery}`
+      );
+
+    return this.parseTrainDetails(
+      body,
+      trainNumber
+    );
+  }
+
+  private parseTrainDetails(
+    body: Json,
+    trainNumber: string
+  ): TrainDetails {
+    const data =
+      object(body.data);
+
+    const train =
+      data.train
+        ? object(data.train)
+        : {};
+
+    const rawRoute =
+      Array.isArray(
+        data.route
+      )
+        ? data.route
+        : [];
+
+    const stops =
+      rawRoute.map(
+        parseStop
+      );
+
+    return {
+      trainNumber:
+        string(
+          train.number
+        ) ??
+        trainNumber,
+
+      trainName:
+        string(
+          train.name
+        ),
+
+      sourceCode:
+        string(
+          train.sourceCode
+        ),
+
+      destinationCode:
+        string(
+          train.destinationCode
+        ),
+
+      runDays:
+        Array.isArray(
+          train.runDays
+        )
+          ? train.runDays.filter(
+              (
+                value
+              ): value is string =>
+                typeof value ===
+                "string"
+            )
+          : [],
+
+      distanceKm:
+        number(
+          train.distance
+        ),
+
+      durationMinutes:
+        number(
+          train.duration
+        ),
+
+      stops,
+    };
+  }
+}
+
+function parseDateSafe(
+  value:
+    | string
+    | null
+    | undefined
+): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed =
+    new Date(value);
+
+  return Number.isNaN(
+    parsed.getTime()
+  )
+    ? null
+    : parsed;
 }

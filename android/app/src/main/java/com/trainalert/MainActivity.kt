@@ -411,7 +411,7 @@ fun TrainAlertApp(
 
     if (showAddJourney) {
 
-        AddJourneyScreen(
+        AddJourneyFormScreen(
             context = context,
 
             onCreated = {

@@ -49,7 +49,8 @@ export class JourneyService {
     const live =
       await this.trains.live(
         input.trainNumber,
-        input.journeyDate
+        input.journeyDate,
+        input.destinationStationCode
       );
 
     try {
@@ -65,7 +66,6 @@ export class JourneyService {
         .createWithAlerts(
           journey
         );
-
     } catch (error) {
       if (
         error instanceof
@@ -74,7 +74,10 @@ export class JourneyService {
         throw new JourneyServiceError(
           error.code,
           error.message,
-          400
+          error.code ===
+            "DESTINATION_ETA_INCONSISTENT"
+            ? 503
+            : 400
         );
       }
 
@@ -117,7 +120,8 @@ export class JourneyService {
     const live =
       await this.trains.live(
         journey.trainNumber,
-        journey.journeyDate
+        journey.journeyDate,
+        journey.destinationStationCode
       );
 
     try {
@@ -139,7 +143,8 @@ export class JourneyService {
           .refreshEta(
             journey.id,
             eta,
-            destination.delayMinutes ??
+            live.destinationLiveDelayMinutes ??
+              destination.delayMinutes ??
               live.delayMinutes ??
               null,
             live.observedAt ??
@@ -155,7 +160,6 @@ export class JourneyService {
       }
 
       return refreshed;
-
     } catch (error) {
       if (
         error instanceof
@@ -168,11 +172,6 @@ export class JourneyService {
         error instanceof
         JourneyLifecycleError
       ) {
-        /*
-         * When the destination has already been reached,
-         * reconcile the persisted journey rather than turning
-         * provider weirdness into a new future ETA.
-         */
         if (
           error.code ===
           "DESTINATION_ALREADY_REACHED"
@@ -191,7 +190,10 @@ export class JourneyService {
         throw new JourneyServiceError(
           error.code,
           error.message,
-          400
+          error.code ===
+            "DESTINATION_ETA_INCONSISTENT"
+            ? 503
+            : 400
         );
       }
 
@@ -227,7 +229,6 @@ export class JourneyService {
       }
 
       return journey;
-
     } catch (error) {
       if (
         error instanceof
@@ -314,7 +315,8 @@ export class JourneyService {
         );
 
     return {
-      id: journey.id,
+      id:
+        journey.id,
 
       trainNumber:
         journey.trainNumber,

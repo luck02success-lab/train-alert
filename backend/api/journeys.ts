@@ -1,7 +1,11 @@
-import type { CreateJourneyRequest } from "../src/api-contract.js";
+import type {
+  CreateJourneyRequest,
+} from "../src/api-contract.js";
+
 import {
   JourneyServiceError,
 } from "../src/journey-service.js";
+
 import {
   ApiError,
 } from "../src/train-service.js";
@@ -10,13 +14,20 @@ function json(
   body: unknown,
   status = 200
 ): Response {
-  return Response.json(body, { status });
+  return Response.json(
+    body,
+    { status }
+  );
 }
 
-async function authenticate(request: Request) {
+async function authenticate(
+  request: Request
+) {
   try {
     const { auth } =
-      await import("../src/api-runtime.js");
+      await import(
+        "../src/api-runtime.js"
+      );
 
     return await auth.authenticate({
       headers: Object.fromEntries(
@@ -32,37 +43,126 @@ async function authenticate(request: Request) {
   }
 }
 
-function errorResponse(error: unknown) {
-  if (error instanceof JourneyServiceError) {
-    return json(
-      {
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      },
-      error.status
-    );
+function isPostgresDuplicateJourneyError(
+  error: unknown
+): boolean {
+  if (
+    !error ||
+    typeof error !== "object"
+  ) {
+    return false;
   }
 
-  if (error instanceof ApiError) {
-    return json(
-      {
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      },
-      error.status
-    );
-  }
+  const candidate =
+    error as {
+      code?: unknown;
+      constraint?: unknown;
+    };
 
-  console.error(error);
+  return (
+    candidate.code === "23505" &&
+    candidate.constraint ===
+      "journeys_one_open_destination_idx"
+  );
+}
+
+function duplicateJourneyResponse(
+  error: unknown
+): Response {
+  const detail =
+    error &&
+    typeof error === "object" &&
+    "detail" in error &&
+    typeof (
+      error as {
+        detail?: unknown;
+      }
+    ).detail === "string"
+      ? (
+          error as {
+            detail: string;
+          }
+        ).detail
+      : null;
+
+  /*
+   * We intentionally do not expose the raw PostgreSQL
+   * detail because it contains user_id and internal DB
+   * information.
+   *
+   * The client only needs the business-level conflict.
+   */
+  void detail;
 
   return json(
     {
       error: {
-        code: "INTERNAL_ERROR",
+        code:
+          "JOURNEY_ALREADY_EXISTS",
+        message:
+          "You already have an active journey for this train, date, and destination.",
+      },
+    },
+    409
+  );
+}
+
+function errorResponse(
+  error: unknown
+): Response {
+  if (
+    isPostgresDuplicateJourneyError(
+      error
+    )
+  ) {
+    return duplicateJourneyResponse(
+      error
+    );
+  }
+
+  if (
+    error instanceof
+    JourneyServiceError
+  ) {
+    return json(
+      {
+        error: {
+          code:
+            error.code,
+          message:
+            error.message,
+        },
+      },
+      error.status
+    );
+  }
+
+  if (
+    error instanceof
+    ApiError
+  ) {
+    return json(
+      {
+        error: {
+          code:
+            error.code,
+          message:
+            error.message,
+        },
+      },
+      error.status
+    );
+  }
+
+  console.error(
+    error
+  );
+
+  return json(
+    {
+      error: {
+        code:
+          "INTERNAL_ERROR",
         message:
           "An unexpected error occurred.",
       },
@@ -75,36 +175,56 @@ function getTodayIndia(): string {
   return new Intl.DateTimeFormat(
     "en-CA",
     {
-      timeZone: "Asia/Kolkata",
+      timeZone:
+        "Asia/Kolkata",
+
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
     }
-  ).format(new Date());
+  ).format(
+    new Date()
+  );
 }
 
 export async function GET(
   request: Request
 ): Promise<Response> {
   try {
-    const { userId } =
-      await authenticate(request);
+    const {
+      userId,
+    } =
+      await authenticate(
+        request
+      );
 
-    const { journeyService } =
-      await import("../src/api-runtime.js");
+    const {
+      journeyService,
+    } =
+      await import(
+        "../src/api-runtime.js"
+      );
 
     const journeys =
-      await journeyService.list(userId);
+      await journeyService.list(
+        userId
+      );
 
     return json(
       await Promise.all(
-        journeys.map((journey) =>
-          journeyService.response(journey)
+        journeys.map(
+          (journey) =>
+            journeyService.response(
+              journey
+            )
         )
       )
     );
+
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(
+      error
+    );
   }
 }
 
@@ -112,18 +232,26 @@ export async function POST(
   request: Request
 ): Promise<Response> {
   try {
-    const { userId } =
-      await authenticate(request);
+    const {
+      userId,
+    } =
+      await authenticate(
+        request
+      );
 
-    let body: Partial<CreateJourneyRequest>;
+    let body:
+      Partial<CreateJourneyRequest>;
 
     try {
-      body = await request.json();
+      body =
+        await request.json();
     } catch {
       return json(
         {
           error: {
-            code: "INVALID_JSON",
+            code:
+              "INVALID_JSON",
+
             message:
               "Request body must be valid JSON.",
           },
@@ -133,13 +261,18 @@ export async function POST(
     }
 
     if (
-      typeof body.trainNumber !== "string" ||
-      !/^\d{5}$/.test(body.trainNumber)
+      typeof body.trainNumber !==
+        "string" ||
+      !/^\d{5}$/.test(
+        body.trainNumber
+      )
     ) {
       return json(
         {
           error: {
-            code: "INVALID_TRAIN_NUMBER",
+            code:
+              "INVALID_TRAIN_NUMBER",
+
             message:
               "Train number must contain exactly 5 digits.",
           },
@@ -149,7 +282,8 @@ export async function POST(
     }
 
     if (
-      typeof body.journeyDate !== "string" ||
+      typeof body.journeyDate !==
+        "string" ||
       !/^\d{4}-\d{2}-\d{2}$/.test(
         body.journeyDate
       )
@@ -157,7 +291,9 @@ export async function POST(
       return json(
         {
           error: {
-            code: "INVALID_JOURNEY_DATE",
+            code:
+              "INVALID_JOURNEY_DATE",
+
             message:
               "Journey date must use YYYY-MM-DD.",
           },
@@ -170,12 +306,15 @@ export async function POST(
       getTodayIndia();
 
     if (
-      body.journeyDate < todayIndia
+      body.journeyDate <
+      todayIndia
     ) {
       return json(
         {
           error: {
-            code: "INVALID_JOURNEY_DATE",
+            code:
+              "INVALID_JOURNEY_DATE",
+
             message:
               "Journey date must be today or a future date.",
           },
@@ -196,6 +335,7 @@ export async function POST(
           error: {
             code:
               "INVALID_DESTINATION_STATION",
+
             message:
               "Destination station code is invalid.",
           },
@@ -204,8 +344,12 @@ export async function POST(
       );
     }
 
-    const { journeyService } =
-      await import("../src/api-runtime.js");
+    const {
+      journeyService,
+    } =
+      await import(
+        "../src/api-runtime.js"
+      );
 
     const journey =
       await journeyService.create(
@@ -218,16 +362,22 @@ export async function POST(
             body.journeyDate,
 
           destinationStationCode:
-            body.destinationStationCode
+            body
+              .destinationStationCode
               .toUpperCase(),
         }
       );
 
     return json(
-      await journeyService.response(journey),
+      await journeyService.response(
+        journey
+      ),
       201
     );
+
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(
+      error
+    );
   }
 }

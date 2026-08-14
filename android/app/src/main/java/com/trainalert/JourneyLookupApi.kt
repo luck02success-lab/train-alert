@@ -3,14 +3,17 @@ package com.trainalert
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+
 import okhttp3.OkHttpClient
 import okhttp3.Request
+
 import org.json.JSONArray
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.URLEncoder
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+
 
 data class TrainSuggestion(
     val number: String,
@@ -31,22 +34,36 @@ object JourneyLookupApi {
         1
 
     private val mainHandler =
-        Handler(Looper.getMainLooper())
+        Handler(
+            Looper.getMainLooper()
+        )
 
     private val client =
         OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(
+                10,
+                TimeUnit.SECONDS
+            )
+            .readTimeout(
+                10,
+                TimeUnit.SECONDS
+            )
+            .writeTimeout(
+                10,
+                TimeUnit.SECONDS
+            )
             .build()
 
     private val executor =
         Executors.newSingleThreadExecutor()
 
+
     fun searchTrains(
         query: String,
-        onSuccess: (List<TrainSuggestion>) -> Unit,
-        onError: (String) -> Unit
+        onSuccess:
+            (List<TrainSuggestion>) -> Unit,
+        onError:
+            (String) -> Unit
     ) {
         val encodedQuery =
             try {
@@ -73,10 +90,13 @@ object JourneyLookupApi {
         )
     }
 
+
     fun searchStations(
         query: String,
-        onSuccess: (List<StationSuggestion>) -> Unit,
-        onError: (String) -> Unit
+        onSuccess:
+            (List<StationSuggestion>) -> Unit,
+        onError:
+            (String) -> Unit
     ) {
         val encodedQuery =
             try {
@@ -103,11 +123,17 @@ object JourneyLookupApi {
         )
     }
 
+
     private fun <T> search(
         path: String,
-        parser: (String) -> List<T>,
-        onSuccess: (List<T>) -> Unit,
-        onError: (String) -> Unit
+        parser:
+            (String) -> List<T>,
+
+        onSuccess:
+            (List<T>) -> Unit,
+
+        onError:
+            (String) -> Unit
     ) {
         executor.execute {
 
@@ -115,14 +141,16 @@ object JourneyLookupApi {
 
             try {
                 var token =
-                    FirebaseAuthManager.getIdToken()
+                    FirebaseAuthManager
+                        .getIdToken()
 
                 while (true) {
 
                     val request =
                         Request.Builder()
                             .url(
-                                BuildConfig.API_BASE_URL +
+                                BuildConfig
+                                    .API_BASE_URL +
                                     path
                             )
                             .header(
@@ -134,12 +162,15 @@ object JourneyLookupApi {
 
                     val response =
                         client
-                            .newCall(request)
+                            .newCall(
+                                request
+                            )
                             .execute()
 
                     if (
                         response.code == 401 &&
-                        attempt < MAX_AUTH_RETRIES
+                        attempt <
+                        MAX_AUTH_RETRIES
                     ) {
                         response.close()
 
@@ -164,8 +195,9 @@ object JourneyLookupApi {
                                 ?.string()
                                 .orEmpty()
 
-                        if (!it.isSuccessful) {
-
+                        if (
+                            !it.isSuccessful
+                        ) {
                             val message =
                                 parseErrorMessage(
                                     body,
@@ -189,7 +221,6 @@ object JourneyLookupApi {
                             try {
                                 parser(body)
                             } catch (error: Exception) {
-
                                 Log.e(
                                     TAG,
                                     "Unable to parse lookup response",
@@ -205,7 +236,9 @@ object JourneyLookupApi {
                             }
 
                         mainHandler.post {
-                            onSuccess(result)
+                            onSuccess(
+                                result
+                            )
                         }
                     }
 
@@ -222,11 +255,14 @@ object JourneyLookupApi {
 
                 postError(
                     onError,
-                    networkErrorMessage(error)
+                    networkErrorMessage(
+                        error
+                    )
                 )
             }
         }
     }
+
 
     private fun parseTrains(
         body: String
@@ -243,32 +279,43 @@ object JourneyLookupApi {
             ) {
 
                 val item =
-                    array.getJSONObject(index)
+                    array.getJSONObject(
+                        index
+                    )
 
                 val number =
                     item
-                        .optString("number")
+                        .optString(
+                            "number"
+                        )
                         .trim()
 
                 val name =
                     item
-                        .optString("name")
+                        .optString(
+                            "name"
+                        )
                         .trim()
 
                 if (
-                    number.isNotBlank() &&
-                    name.isNotBlank()
+                    number.isNotBlank()
                 ) {
                     add(
                         TrainSuggestion(
-                            number = number,
-                            name = name
+                            number =
+                                number,
+
+                            name =
+                                name.ifBlank {
+                                    "Train $number"
+                                }
                         )
                     )
                 }
             }
         }
     }
+
 
     private fun parseStations(
         body: String
@@ -285,33 +332,44 @@ object JourneyLookupApi {
             ) {
 
                 val item =
-                    array.getJSONObject(index)
+                    array.getJSONObject(
+                        index
+                    )
 
                 val code =
                     item
-                        .optString("code")
+                        .optString(
+                            "code"
+                        )
                         .trim()
                         .uppercase()
 
                 val name =
                     item
-                        .optString("name")
+                        .optString(
+                            "name"
+                        )
                         .trim()
 
                 if (
-                    code.isNotBlank() &&
-                    name.isNotBlank()
+                    code.isNotBlank()
                 ) {
                     add(
                         StationSuggestion(
-                            code = code,
-                            name = name
+                            code =
+                                code,
+
+                            name =
+                                name.ifBlank {
+                                    code
+                                }
                         )
                     )
                 }
             }
         }
     }
+
 
     private fun parseErrorMessage(
         body: String,
@@ -321,23 +379,34 @@ object JourneyLookupApi {
         return try {
 
             val json =
-                org.json.JSONObject(body)
+                org.json.JSONObject(
+                    body
+                )
 
             val error =
-                json.optJSONObject("error")
+                json.optJSONObject(
+                    "error"
+                )
 
             error
-                ?.optString("message")
+                ?.optString(
+                    "message"
+                )
                 ?.takeIf {
                     it.isNotBlank()
                 }
-                ?: when (statusCode) {
+                ?: when (
+                    statusCode
+                ) {
 
                     401 ->
                         "Your session is no longer valid."
 
                     404 ->
                         "Search service was not found."
+
+                    409 ->
+                        "This journey is already added."
 
                     429 ->
                         "Search is temporarily busy. Please try again."
@@ -351,10 +420,15 @@ object JourneyLookupApi {
 
         } catch (_: Exception) {
 
-            when (statusCode) {
+            when (
+                statusCode
+            ) {
 
                 401 ->
                     "Your session is no longer valid."
+
+                409 ->
+                    "This journey is already added."
 
                 429 ->
                     "Search is temporarily busy. Please try again."
@@ -368,11 +442,14 @@ object JourneyLookupApi {
         }
     }
 
+
     private fun networkErrorMessage(
         error: Exception
     ): String {
 
-        return when (error) {
+        return when (
+            error
+        ) {
 
             is SocketTimeoutException ->
                 "The search request timed out. Please try again."
@@ -389,8 +466,11 @@ object JourneyLookupApi {
         }
     }
 
+
     private fun postError(
-        callback: (String) -> Unit,
+        callback:
+            (String) -> Unit,
+
         message: String
     ) {
         mainHandler.post {
