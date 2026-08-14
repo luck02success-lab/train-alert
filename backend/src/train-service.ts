@@ -48,6 +48,26 @@ export function validateLiveQuery(
   return date;
 }
 
+function dateValue(
+  value:
+    | string
+    | null
+    | undefined
+): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed =
+    new Date(value);
+
+  return Number.isNaN(
+    parsed.getTime()
+  )
+    ? null
+    : parsed;
+}
+
 function destinationLooksSuspicious(
   live: TrainLiveStatus,
   destinationStationCode: string,
@@ -65,49 +85,80 @@ function destinationLooksSuspicious(
   }
 
   /*
-   * Actual arrival/departure means the destination is explicitly
-   * known to have been reached, so there is nothing to validate.
+   * If destination is still the next halt, always consider any
+   * actual-arrival timestamp suspicious until cross-checked.
    */
-  if (
-    destination.actualArrival ||
-    destination.actualDeparture
-  ) {
-    return false;
-  }
-
-  const expected =
-    destination.expectedArrival
-      ? new Date(
-          destination.expectedArrival
-        )
-      : null;
+  const destinationIsNext =
+    live.nextStationCode ===
+      destinationStationCode ||
+    live.nextStation ===
+      destination.stationName;
 
   if (
-    !expected ||
-    Number.isNaN(
-      expected.getTime()
+    destinationIsNext &&
+    (
+      destination.actualArrival ||
+      destination.actualDeparture
     )
   ) {
     return true;
   }
 
   /*
-   * A future expected ETA is normally trustworthy enough.
+   * Same logic using actual route position.
    */
   if (
-    expected.getTime() >
-    now.getTime()
+    live.isActualPosition &&
+    typeof live.currentSequence ===
+      "number" &&
+    typeof destination.sequence ===
+      "number" &&
+    destination.sequence >
+      live.currentSequence &&
+    (
+      destination.actualArrival ||
+      destination.actualDeparture
+    )
   ) {
-    return false;
+    return true;
   }
 
-  /*
-   * A past ETA without actual arrival/departure is suspicious.
-   *
-   * This is exactly the scenario where we've previously seen
-   * delayed trains incorrectly reported as already reached.
-   */
-  return true;
+  const stopStatus =
+    destination.status
+      ?.trim()
+      .toLowerCase();
+
+  if (
+    (
+      stopStatus ===
+        "upcoming" ||
+      stopStatus ===
+        "scheduled"
+    ) &&
+    (
+      destination.actualArrival ||
+      destination.actualDeparture
+    )
+  ) {
+    return true;
+  }
+
+  const expected =
+    dateValue(
+      destination.expectedArrival
+    );
+
+  if (
+    expected &&
+    expected.getTime() <=
+      now.getTime() &&
+    !destination.actualArrival &&
+    !destination.actualDeparture
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export class TrainService {
@@ -136,13 +187,6 @@ export class TrainService {
             date
           );
 
-      /*
-       * Normal path:
-       * one train-live request.
-       *
-       * Suspicious destination:
-       * additionally query destination station live board.
-       */
       if (
         destinationStationCode &&
         destinationLooksSuspicious(

@@ -71,7 +71,8 @@ function delayValue(
     | null
     | undefined
 ): number | null {
-  return typeof value === "number" &&
+  return typeof value ===
+    "number" &&
     Number.isFinite(value)
     ? value
     : null;
@@ -94,28 +95,159 @@ function effectiveDelayMinutes(
   );
 }
 
-function routeIndex(
-  live: TrainLiveStatus,
-  stationCode:
-    | string
+function sequenceOf(
+  value:
+    | number
     | null
     | undefined
-): number {
-  if (!stationCode) {
-    return -1;
+): number | null {
+  return typeof value ===
+    "number" &&
+    Number.isFinite(value)
+    ? value
+    : null;
+}
+
+function destinationIsAhead(
+  live: TrainLiveStatus,
+  stop: TrainLiveStop
+): boolean {
+  const currentSequence =
+    sequenceOf(
+      live.currentSequence
+    );
+
+  const destinationSequence =
+    sequenceOf(
+      stop.sequence
+    );
+
+  if (
+    currentSequence !== null &&
+    destinationSequence !== null
+  ) {
+    return (
+      destinationSequence >
+      currentSequence
+    );
   }
 
-  const normalizedCode =
-    stationCode
-      .trim()
-      .toUpperCase();
-
-  return live.stops.findIndex(
-    (stop) =>
+  if (
+    live.nextStationCode &&
+    live.nextStationCode ===
       stop.stationCode
+  ) {
+    return true;
+  }
+
+  if (
+    live.nextStation &&
+    live.nextStation
+      .trim()
+      .toUpperCase() ===
+      stop.stationName
         .trim()
-        .toUpperCase() ===
-      normalizedCode
+        .toUpperCase()
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function stationBoardSaysUpcoming(
+  live: TrainLiveStatus
+): boolean {
+  return (
+    live.destinationLiveType ===
+      "upcoming" ||
+    live.destinationLiveType ===
+      "scheduled"
+  );
+}
+
+function destinationCompletionIsCorroborated(
+  live: TrainLiveStatus,
+  stop: TrainLiveStop
+): boolean {
+  /*
+   * If destination is clearly still ahead, then any stale
+   * actualArrival must be ignored.
+   */
+  if (
+    destinationIsAhead(
+      live,
+      stop
+    )
+  ) {
+    return false;
+  }
+
+  /*
+   * Actual departure is stronger than actual arrival.
+   */
+  if (
+    stop.actualDeparture
+  ) {
+    return true;
+  }
+
+  /*
+   * Actual arrival is strong only when the destination is no
+   * longer represented as upcoming and the train position does
+   * not contradict it.
+   */
+  if (
+    stop.actualArrival &&
+    !stationBoardSaysUpcoming(
+      live
+    )
+  ) {
+    return true;
+  }
+
+  /*
+   * Station board "departed" without actual timestamp is
+   * insufficient on its own; it can be stale.
+   */
+  return false;
+}
+
+function providerExpectedEtaIsPlausible(
+  expectedArrival: Date,
+  scheduledArrival: Date | null,
+  delayMinutes: number | null,
+  now: Date
+): boolean {
+  if (
+    expectedArrival.getTime() <=
+    now.getTime()
+  ) {
+    return false;
+  }
+
+  if (
+    !scheduledArrival ||
+    delayMinutes === null
+  ) {
+    return true;
+  }
+
+  const delayAdjusted =
+    new Date(
+      scheduledArrival.getTime() +
+        delayMinutes * 60_000
+    );
+
+  const deviationMinutes =
+    Math.abs(
+      expectedArrival.getTime() -
+        delayAdjusted.getTime()
+    ) / 60_000;
+
+  return (
+    deviationMinutes <=
+    15
   );
 }
 
@@ -129,85 +261,36 @@ export function destinationPosition(
   live: TrainLiveStatus,
   destinationCode: string
 ): DestinationPosition {
-  const destinationIndex =
-    routeIndex(
+  const destination =
+    resolveDestination(
       live,
       destinationCode
     );
 
-  if (
-    destinationIndex < 0
-  ) {
-    return "unknown";
-  }
-
-  /*
-   * Prefer the explicit current sequence if RailRadar provides it.
-   *
-   * This is useful informational evidence, but it is deliberately
-   * NOT used by itself to mark a journey as completed.
-   */
-  if (
-    typeof live.currentSequence ===
-      "number" &&
-    Number.isFinite(
+  const currentSequence =
+    sequenceOf(
       live.currentSequence
-    )
-  ) {
-    const destinationSequence =
-      live.stops[
-        destinationIndex
-      ]?.sequence;
+    );
 
-    if (
-      typeof destinationSequence ===
-        "number" &&
-      Number.isFinite(
-        destinationSequence
-      )
-    ) {
-      if (
-        destinationSequence >
-        live.currentSequence
-      ) {
-        return "ahead";
-      }
-
-      if (
-        destinationSequence ===
-        live.currentSequence
-      ) {
-        return "current";
-      }
-
-      return "passed";
-    }
-  }
-
-  /*
-   * Fall back to station-code route indices.
-   *
-   * Again, this is only positional evidence.
-   */
-  const currentIndex =
-    routeIndex(
-      live,
-      live.currentStationCode
+  const destinationSequence =
+    sequenceOf(
+      destination.sequence
     );
 
   if (
-    currentIndex >= 0
+    currentSequence !== null &&
+    destinationSequence !== null
   ) {
     if (
-      destinationIndex >
-      currentIndex
+      destinationSequence >
+      currentSequence
     ) {
       return "ahead";
     }
 
     if (
-      destinationIndex ===
-      currentIndex
+      destinationSequence ===
+      currentSequence
     ) {
       return "current";
     }
@@ -215,173 +298,14 @@ export function destinationPosition(
     return "passed";
   }
 
-  const nextIndex =
-    routeIndex(
-      live,
-      live.nextStationCode ??
-        live.nextStation
-    );
-
   if (
-    nextIndex >= 0
+    live.nextStationCode ===
+    destination.stationCode
   ) {
-    if (
-      destinationIndex <
-      nextIndex
-    ) {
-      return "passed";
-    }
-
-    return "ahead";
-  }
-
-  const previousIndex =
-    routeIndex(
-      live,
-      live.previousStationCode ??
-        live.previousStation
-    );
-
-  if (
-    previousIndex >= 0
-  ) {
-    if (
-      destinationIndex <=
-      previousIndex
-    ) {
-      return "passed";
-    }
-
     return "ahead";
   }
 
   return "unknown";
-}
-
-function providerExpectedEtaIsPlausible(
-  expectedArrival: Date,
-  scheduledArrival: Date | null,
-  delayMinutes: number | null,
-  now: Date
-): boolean {
-  /*
-   * A past ETA is never directly usable.
-   *
-   * It does NOT mean the train has reached the destination.
-   */
-  if (
-    expectedArrival.getTime() <=
-    now.getTime()
-  ) {
-    return false;
-  }
-
-  /*
-   * No baseline available: future provider ETA is the best
-   * signal we currently have.
-   */
-  if (
-    !scheduledArrival ||
-    delayMinutes === null
-  ) {
-    return true;
-  }
-
-  const delayAdjusted =
-    new Date(
-      scheduledArrival.getTime() +
-        delayMinutes *
-          60_000
-    );
-
-  /*
-   * RailRadar can calculate ETA using more information than the
-   * displayed delay, so allow a reasonable difference.
-   */
-  const deviationMinutes =
-    Math.abs(
-      expectedArrival.getTime() -
-        delayAdjusted.getTime()
-    ) / 60_000;
-
-  return deviationMinutes <= 15;
-}
-
-type DestinationEvidence =
-  | "actual-arrival"
-  | "actual-departure"
-  | "station-board-upcoming"
-  | "station-board-at-station"
-  | "station-board-departed"
-  | "stop-upcoming"
-  | "stop-scheduled"
-  | "stop-departed"
-  | "none";
-
-function destinationEvidence(
-  stop: TrainLiveStop,
-  live: TrainLiveStatus
-): DestinationEvidence {
-  if (
-    stop.actualArrival
-  ) {
-    return "actual-arrival";
-  }
-
-  if (
-    stop.actualDeparture
-  ) {
-    return "actual-departure";
-  }
-
-  if (
-    live.destinationLiveType ===
-    "upcoming"
-  ) {
-    return "station-board-upcoming";
-  }
-
-  if (
-    live.destinationLiveType ===
-    "at-station"
-  ) {
-    return "station-board-at-station";
-  }
-
-  if (
-    live.destinationLiveType ===
-    "departed"
-  ) {
-    return "station-board-departed";
-  }
-
-  const status =
-    stop.status
-      ?.trim()
-      .toLowerCase();
-
-  if (
-    status ===
-    "upcoming"
-  ) {
-    return "stop-upcoming";
-  }
-
-  if (
-    status ===
-    "scheduled"
-  ) {
-    return "stop-scheduled";
-  }
-
-  if (
-    status ===
-    "departed"
-  ) {
-    return "stop-departed";
-  }
-
-  return "none";
 }
 
 function destinationIsActuallyReached(
@@ -389,73 +313,31 @@ function destinationIsActuallyReached(
   live: TrainLiveStatus
 ): boolean {
   /*
-   * These are explicit arrival signals.
+   * A destination that is still the next halt/upcoming station
+   * cannot be considered reached, even if RailRadar gives us a
+   * stale actualArrival timestamp.
    */
   if (
-    Boolean(
-      stop.actualArrival
+    destinationIsAhead(
+      live,
+      stop
     )
   ) {
-    return true;
+    return false;
   }
 
   if (
-    Boolean(
-      stop.actualDeparture
+    stationBoardSaysUpcoming(
+      live
     )
   ) {
-    return true;
-  }
-
-  /*
-   * Station board explicitly saying the destination is upcoming
-   * or scheduled is direct evidence that it has NOT been reached.
-   */
-  if (
-    live.destinationLiveType ===
-      "upcoming" ||
-    live.destinationLiveType ===
-      "scheduled"
-  ) {
     return false;
   }
 
-  /*
-   * at-station means the train is there now.
-   * We don't mark it completed until an arrival/departure
-   * timestamp is available.
-   */
-  if (
-    live.destinationLiveType ===
-    "at-station"
-  ) {
-    return false;
-  }
-
-  /*
-   * A station-board "departed" signal is useful, but without
-   * actual arrival/departure evidence it can still be stale.
-   */
-  if (
-    live.destinationLiveType ===
-    "departed"
-  ) {
-    return false;
-  }
-
-  /*
-   * IMPORTANT:
-   *
-   * Route position alone is NOT enough.
-   *
-   * This is intentionally absent:
-   *
-   *   if (destinationPosition(...) === "passed") ...
-   *
-   * because that was causing false "already reached" states
-   * for delayed trains.
-   */
-  return false;
+  return destinationCompletionIsCorroborated(
+    live,
+    stop
+  );
 }
 
 export function destinationEta(
@@ -464,7 +346,7 @@ export function destinationEta(
   now = new Date()
 ): Date {
   /*
-   * Backward-compatible simple mode.
+   * Compatibility mode for old callers.
    */
   if (!live) {
     const raw =
@@ -496,9 +378,6 @@ export function destinationEta(
     return value;
   }
 
-  /*
-   * Only strong evidence can mark the destination as reached.
-   */
   if (
     destinationIsActuallyReached(
       stop,
@@ -528,22 +407,12 @@ export function destinationEta(
       live
     );
 
-  const evidence =
-    destinationEvidence(
-      stop,
-      live
-    );
-
   /*
-   * 1. Destination station board has highest priority for a
-   *    future ETA.
+   * Destination-specific station board ETA gets first priority.
    */
   if (
-    (
-      live.destinationLiveType ===
-        "upcoming" ||
-      live.destinationLiveType ===
-        "scheduled"
+    stationBoardSaysUpcoming(
+      live
     ) &&
     expectedArrival &&
     expectedArrival.getTime() >
@@ -553,8 +422,8 @@ export function destinationEta(
   }
 
   /*
-   * 2. If station board explicitly says the train is upcoming
-   *    but ETA is missing, calculate from schedule + delay.
+   * If station board says upcoming but didn't provide ETA,
+   * reconstruct from schedule + latest delay.
    */
   if (
     live.destinationLiveType ===
@@ -578,7 +447,7 @@ export function destinationEta(
   }
 
   /*
-   * 3. Trust a future generic train-live ETA if it is plausible.
+   * Future generic ETA.
    */
   if (
     expectedArrival &&
@@ -593,12 +462,10 @@ export function destinationEta(
   }
 
   /*
-   * 4. Delayed/early train fallback:
+   * Delayed/early train fallback.
    *
-   * schedule + latest available delay.
-   *
-   * This is especially important when RailRadar returns a stale
-   * expectedArrival but destination delay is still useful.
+   * This fixes the important case where scheduled arrival has
+   * passed but the train is still approaching.
    */
   if (
     scheduledArrival &&
@@ -620,52 +487,21 @@ export function destinationEta(
   }
 
   /*
-   * 5. Future scheduled time is acceptable only when the provider
-   * isn't contradicting it with a stale past ETA plus a usable
-   * delay.
+   * Future scheduled arrival remains usable if the provider
+   * doesn't provide a trustworthy live ETA.
    */
   if (
     scheduledArrival &&
     scheduledArrival.getTime() >
       now.getTime()
   ) {
-    if (
-      expectedArrival &&
-      expectedArrival.getTime() <=
-        now.getTime() &&
-      delayMinutes !== null
-    ) {
-      /*
-       * We already attempted schedule + delay above.
-       *
-       * If that result wasn't future, we don't invent another ETA.
-       */
-      if (
-        evidence ===
-          "station-board-upcoming" ||
-        evidence ===
-          "station-board-at-station" ||
-        evidence ===
-          "stop-upcoming" ||
-        evidence ===
-          "stop-scheduled" ||
-        evidence ===
-          "none"
-      ) {
-        throw new JourneyLifecycleError(
-          "DESTINATION_ETA_INCONSISTENT",
-          "Live railway data for this destination is temporarily inconsistent. Please try again shortly."
-        );
-      }
-    }
-
     return scheduledArrival;
   }
 
   /*
-   * No trustworthy future ETA.
-   *
-   * This is intentionally NOT converted into "already reached".
+   * The important part:
+   * never convert an unresolved timestamp contradiction into
+   * DESTINATION_ALREADY_REACHED.
    */
   throw new JourneyLifecycleError(
     "DESTINATION_ETA_INCONSISTENT",
@@ -679,16 +515,14 @@ export function canTransition(
 ): boolean {
   return (
     (
-      from ===
-        "scheduled" &&
+      from === "scheduled" &&
       [
         "active",
         "cancelled",
       ].includes(to)
     ) ||
     (
-      from ===
-        "active" &&
+      from === "active" &&
       [
         "completed",
         "cancelled",
@@ -781,10 +615,6 @@ export function newJourney(
       now
     );
 
-  /*
-   * At this point destinationEta() has already established that
-   * the ETA is the best available future ETA.
-   */
   if (
     eta.getTime() <=
     now.getTime()

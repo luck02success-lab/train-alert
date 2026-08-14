@@ -196,6 +196,25 @@ function dateString(
     : raw;
 }
 
+function parseDate(
+  value:
+    | string
+    | null
+    | undefined
+): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(
+    parsed.getTime()
+  )
+    ? null
+    : parsed;
+}
+
 function parseTrainStatus(
   value: unknown
 ): TrainLiveStatus["status"] {
@@ -804,6 +823,128 @@ export class RailRadarProvider {
     }
   }
 
+  private destinationDataLooksContradictory(
+    live: TrainLiveStatus,
+    destination: TrainLiveStop,
+    now: Date
+  ): boolean {
+    const actualArrival =
+      parseDate(
+        destination.actualArrival
+      );
+
+    const actualDeparture =
+      parseDate(
+        destination.actualDeparture
+      );
+
+    const expectedArrival =
+      parseDate(
+        destination.expectedArrival
+      );
+
+    const destinationSequence =
+      number(
+        destination.sequence
+      );
+
+    const currentSequence =
+      number(
+        live.currentSequence
+      );
+
+    /*
+     * If the destination is explicitly still upcoming,
+     * any past actual arrival is contradictory.
+     */
+    const stopStatus =
+      destination.status
+        ?.trim()
+        .toLowerCase();
+
+    if (
+      (
+        stopStatus === "upcoming" ||
+        stopStatus === "scheduled"
+      ) &&
+      (
+        actualArrival !== null ||
+        actualDeparture !== null
+      )
+    ) {
+      return true;
+    }
+
+    /*
+     * If RailRadar says the destination is the next halt,
+     * then a past actual arrival is inherently contradictory.
+     */
+    const destinationIsNextHalt =
+      live.nextStationCode ===
+      destination.stationCode ||
+      live.nextStation ===
+      destination.stationName;
+
+    if (
+      destinationIsNextHalt &&
+      (
+        actualArrival !== null ||
+        actualDeparture !== null
+      )
+    ) {
+      return true;
+    }
+
+    /*
+     * Actual position with a destination sequence ahead means
+     * the train is still before the destination.
+     */
+    if (
+      live.isActualPosition &&
+      currentSequence !== null &&
+      destinationSequence !== null &&
+      destinationSequence >
+        currentSequence &&
+      (
+        actualArrival !== null ||
+        actualDeparture !== null
+      )
+    ) {
+      return true;
+    }
+
+    /*
+     * A future departure is impossible to reconcile with a
+     * destination that supposedly already had an arrival.
+     */
+    if (
+      actualArrival !== null &&
+      actualDeparture !== null &&
+      actualDeparture.getTime() >
+        now.getTime() &&
+      actualArrival.getTime() <=
+        now.getTime()
+    ) {
+      return true;
+    }
+
+    /*
+     * A stale expected ETA without actual timestamps is also
+     * suspicious and worth a station-board lookup.
+     */
+    if (
+      expectedArrival !== null &&
+      expectedArrival.getTime() <=
+        now.getTime() &&
+      !actualArrival &&
+      !actualDeparture
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
   async enrichDestinationWhenSuspicious(
     live: TrainLiveStatus,
     destinationCode: string,
@@ -820,43 +961,11 @@ export class RailRadarProvider {
       return live;
     }
 
-    const expectedRaw =
-      destination.expectedArrival;
-
-    const expected =
-      parseDateSafe(
-        expectedRaw
-      );
-
-    const expectedIsPast =
-      expected !== null &&
-      expected.getTime() <=
-        now.getTime();
-
-    const actualReached =
-      Boolean(
-        destination.actualArrival ||
-        destination.actualDeparture
-      );
-
-    const stopStatus =
-      destination.status
-        ?.toLowerCase();
-
     const suspicious =
-      !expected ||
-      (
-        expectedIsPast &&
-        !actualReached
-      ) ||
-      (
-        (
-          stopStatus ===
-            "upcoming" ||
-          stopStatus ===
-            "scheduled"
-        ) &&
-        expectedIsPast
+      this.destinationDataLooksContradictory(
+        live,
+        destination,
+        now
       );
 
     if (!suspicious) {
@@ -874,15 +983,16 @@ export class RailRadarProvider {
         );
     } catch (error) {
       /*
-       * A station-board failure is not evidence that the
-       * destination has been reached.
+       * Failure of the cross-check is not evidence of arrival.
        */
       console.warn(
         "Destination station board unavailable",
         {
           trainNumber:
             live.trainNumber,
+
           destinationCode,
+
           error,
         }
       );
@@ -899,7 +1009,8 @@ export class RailRadarProvider {
 
     if (!stationTrain) {
       /*
-       * Absence from the board is not proof of arrival.
+       * Absence from the station board is not proof that
+       * the destination was reached.
        */
       return live;
     }
@@ -935,6 +1046,15 @@ export class RailRadarProvider {
               ? {
                   ...stop,
 
+                  /*
+                   * IMPORTANT:
+                   * Only overwrite actualArrival/
+                   * actualDeparture when station
+                   * board itself provides stronger
+                   * confirmation. The station board
+                   * expected ETA must not be converted
+                   * into an actual timestamp.
+                   */
                   expectedArrival:
                     stationTrain
                       .expectedArrivalTime ??
@@ -950,6 +1070,10 @@ export class RailRadarProvider {
                       .delayMinutes ??
                     stop.delayMinutes,
 
+                  /*
+                   * If the station board says upcoming,
+                   * explicitly restore upcoming status.
+                   */
                   status:
                     stationTrain
                       .status ===
@@ -1086,24 +1210,4 @@ export class RailRadarProvider {
       stops,
     };
   }
-}
-
-function parseDateSafe(
-  value:
-    | string
-    | null
-    | undefined
-): Date | null {
-  if (!value) {
-    return null;
-  }
-
-  const parsed =
-    new Date(value);
-
-  return Number.isNaN(
-    parsed.getTime()
-  )
-    ? null
-    : parsed;
 }
