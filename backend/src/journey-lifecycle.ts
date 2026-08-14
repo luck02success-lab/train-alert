@@ -312,32 +312,124 @@ function destinationIsActuallyReached(
   stop: TrainLiveStop,
   live: TrainLiveStatus
 ): boolean {
+  const destinationSequence =
+    sequenceOf(
+      stop.sequence
+    );
+
+  const currentSequence =
+    sequenceOf(
+      live.currentSequence
+    );
+
+  const destinationCode =
+    stop.stationCode
+      .trim()
+      .toUpperCase();
+
+  const currentCode =
+    live.currentStationCode
+      ?.trim()
+      .toUpperCase() ??
+    null;
+
   /*
-   * A destination that is still the next halt/upcoming station
-   * cannot be considered reached, even if RailRadar gives us a
-   * stale actualArrival timestamp.
+   * If the provider says the selected destination is
+   * explicitly upcoming/scheduled, it is NOT reached.
    */
   if (
-    destinationIsAhead(
-      live,
-      stop
-    )
+    live.destinationLiveType ===
+      "upcoming" ||
+    live.destinationLiveType ===
+      "scheduled"
   ) {
     return false;
   }
 
+  /*
+   * The train is still before the destination according
+   * to an actual live position. This overrides stale
+   * actualArrival values.
+   */
   if (
-    stationBoardSaysUpcoming(
-      live
-    )
+    live.isActualPosition ===
+      true &&
+    destinationSequence !== null &&
+    currentSequence !== null &&
+    destinationSequence >
+      currentSequence
   ) {
     return false;
   }
 
-  return destinationCompletionIsCorroborated(
-    live,
-    stop
-  );
+  /*
+   * Train is physically at the selected destination.
+   */
+  if (
+    live.isActualPosition ===
+      true &&
+    currentCode ===
+      destinationCode
+  ) {
+    return (
+      live.destinationLiveType ===
+        "at-station" ||
+      stop.actualArrival !==
+        null ||
+      stop.actualDeparture !==
+        null
+    );
+  }
+
+  /*
+   * Explicit actual departure from destination.
+   */
+  if (
+    stop.actualDeparture !==
+      null &&
+    currentSequence !== null &&
+    destinationSequence !== null &&
+    currentSequence >=
+      destinationSequence
+  ) {
+    return true;
+  }
+
+  /*
+   * Explicit actual arrival is only trusted once the
+   * current live position no longer contradicts it.
+   */
+  if (
+    stop.actualArrival !==
+      null &&
+    currentSequence !== null &&
+    destinationSequence !== null &&
+    currentSequence >=
+      destinationSequence &&
+    live.destinationLiveType !==
+      "upcoming" &&
+    live.destinationLiveType !==
+      "scheduled"
+  ) {
+    return true;
+  }
+
+  /*
+   * A departed destination plus an actual position beyond
+   * it is sufficient corroboration.
+   */
+  if (
+    live.destinationLiveType ===
+      "departed" &&
+    currentSequence !== null &&
+    destinationSequence !== null &&
+    currentSequence >
+      destinationSequence
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export function destinationEta(

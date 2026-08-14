@@ -352,6 +352,22 @@ fun TrainAlertApp(
         )
     }
 
+    val upcomingJourneys =
+    journeys.filter {
+        it.state == "scheduled" ||
+            it.state == "active"
+    }
+
+val completedJourneys =
+    journeys.filter {
+        it.state == "completed"
+    }
+
+val cancelledJourneys =
+    journeys.filter {
+        it.state == "cancelled"
+    }
+
 
     fun loadJourneys() {
 
@@ -483,9 +499,9 @@ fun TrainAlertApp(
                 )
 
                 HomeHeader(
-                    journeyCount =
-                        journeys.size
-                )
+    journeyCount =
+        upcomingJourneys.size
+)
             }
 
 
@@ -555,83 +571,155 @@ fun TrainAlertApp(
 
                 else -> {
 
-                    item {
+    /*
+     * -----------------------------
+     * UPCOMING / ACTIVE JOURNEYS
+     * -----------------------------
+     *
+     * Only scheduled and active journeys
+     * belong in this section.
+     */
+    if (
+        upcomingJourneys.isNotEmpty()
+    ) {
 
-                        Text(
-                            text =
-                                "Upcoming journey",
+        item {
 
-                            style =
-                                MaterialTheme
-                                    .typography
-                                    .titleLarge,
-
-                            fontWeight =
-                                FontWeight.Bold
-                        )
-                    }
-
-
-                    item {
-
-                        journeys
-                            .firstOrNull()
-                            ?.let { journey ->
-
-                                UpcomingJourneyCard(
-                                    journey =
-                                        journey,
-
-                                    onClick = {
-                                        selectedJourneyId =
-                                            journey.id
-                                    }
-                                )
-                            }
-                    }
-
-
+            Text(
+                text =
                     if (
-                        journeys.size > 1
+                        upcomingJourneys.size == 1
                     ) {
+                        "Upcoming journey"
+                    } else {
+                        "Upcoming journeys"
+                    },
 
-                        item {
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleLarge,
 
-                            Text(
-                                text =
-                                    "Your Journeys",
-
-                                style =
-                                    MaterialTheme
-                                        .typography
-                                        .titleLarge,
-
-                                fontWeight =
-                                    FontWeight.Bold
-                            )
-                        }
+                fontWeight =
+                    FontWeight.Bold
+            )
+        }
 
 
-                        items(
-                            journeys.drop(1),
+        items(
+            upcomingJourneys,
 
-                            key = {
-                                it.id
-                            }
-                        ) { journey ->
+            key = {
+                it.id
+            }
+        ) { journey ->
 
-                            JourneyCard(
-                                journey =
-                                    journey,
+            UpcomingJourneyCard(
+                journey =
+                    journey,
 
-                                onClick = {
-                                    selectedJourneyId =
-                                        journey.id
-                                }
-                            )
-                        }
-                    }
+                onClick = {
+                    selectedJourneyId =
+                        journey.id
                 }
+            )
+        }
+    }
+
+
+    /*
+     * -----------------------------
+     * COMPLETED JOURNEYS
+     * -----------------------------
+     */
+    if (
+        completedJourneys.isNotEmpty()
+    ) {
+
+        item {
+
+            Text(
+                text =
+                    "Completed",
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleLarge,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+        }
+
+
+        items(
+            completedJourneys,
+
+            key = {
+                it.id
+            }
+        ) { journey ->
+
+            JourneyCard(
+                journey =
+                    journey,
+
+                onClick = {
+                    selectedJourneyId =
+                        journey.id
+                }
+            )
+        }
+    }
+
+
+    /*
+     * -----------------------------
+     * CANCELLED JOURNEYS
+     * -----------------------------
+     */
+    if (
+        cancelledJourneys.isNotEmpty()
+    ) {
+
+        item {
+
+            Text(
+                text =
+                    "Cancelled",
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleLarge,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+        }
+
+
+        items(
+            cancelledJourneys,
+
+            key = {
+                it.id
+            }
+        ) { journey ->
+
+            JourneyCard(
+                journey =
+                    journey,
+
+                onClick = {
+                    selectedJourneyId =
+                        journey.id
+                }
+            )
+        }
+    }
+}
             }
 
 
@@ -987,21 +1075,33 @@ private fun UpcomingJourneyCard(
             ) {
 
                 Text(
-                    text = "UPCOMING",
+    text =
+        when (journey.state) {
 
-                    style =
-                        MaterialTheme
-                            .typography
-                            .labelMedium,
+            "scheduled" ->
+                "UPCOMING"
 
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .primary,
+            "active" ->
+                "IN PROGRESS"
 
-                    fontWeight =
-                        FontWeight.Bold
-                )
+            else ->
+                journey.state
+                    .uppercase()
+        },
+
+    style =
+        MaterialTheme
+            .typography
+            .labelMedium,
+
+    color =
+        MaterialTheme
+            .colorScheme
+            .primary,
+
+    fontWeight =
+        FontWeight.Bold
+)
 
                 Text(
                     text =
@@ -1377,22 +1477,53 @@ private fun JourneyCard(
 
 
                 Text(
-                    text =
-                        journey.state
-                            .replaceFirstChar {
-                                it.uppercase()
-                            },
+    text =
+        when (journey.state) {
 
-                    style =
-                        MaterialTheme
-                            .typography
-                            .labelLarge,
+            "scheduled" ->
+                "NOT STARTED"
 
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .primary
-                )
+            "active" ->
+                "RUNNING"
+
+            "completed" ->
+                "COMPLETED"
+
+            "cancelled" ->
+                "CANCELLED"
+
+            else ->
+                journey.state
+                    .uppercase()
+        },
+
+    style =
+        MaterialTheme
+            .typography
+            .labelLarge,
+
+    color =
+        when (journey.state) {
+
+            "completed" ->
+                MaterialTheme
+                    .colorScheme
+                    .primary
+
+            "cancelled" ->
+                MaterialTheme
+                    .colorScheme
+                    .error
+
+            else ->
+                MaterialTheme
+                    .colorScheme
+                    .primary
+        },
+
+    fontWeight =
+        FontWeight.Bold
+)
             }
 
 
@@ -1478,46 +1609,110 @@ private fun JourneyCard(
                 }
 
 
-            journey.delayMinutes
-                ?.let {
+            if (
+    journey.state == "active"
+) {
 
-                    Spacer(
-                        modifier =
-                            Modifier.height(6.dp)
-                    )
+    journey.delayMinutes
+        ?.let {
 
-                    Text(
-                        text =
-                            when {
-                                it > 0 ->
-                                    "Running $it min late"
+            Spacer(
+                modifier =
+                    Modifier.height(6.dp)
+            )
 
-                                it < 0 ->
-                                    "Running ${-it} min early"
+            Text(
+                text =
+                    when {
+                        it > 0 ->
+                            "Running $it min late"
 
-                                else ->
-                                    "Running on time"
-                            },
+                        it < 0 ->
+                            "Running ${-it} min early"
 
-                        style =
+                        else ->
+                            "Running on time"
+                    },
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodyMedium,
+
+                color =
+                    when {
+                        it > 0 ->
                             MaterialTheme
-                                .typography
-                                .bodyMedium,
+                                .colorScheme
+                                .error
 
-                        color =
-                            when {
-                                it > 0 ->
-                                    MaterialTheme
-                                        .colorScheme
-                                        .error
+                        else ->
+                            MaterialTheme
+                                .colorScheme
+                                .primary
+                    },
 
-                                else ->
-                                    MaterialTheme
-                                        .colorScheme
-                                        .primary
-                            }
-                    )
-                }
+                fontWeight =
+                    FontWeight.SemiBold
+            )
+        }
+}
+
+if (
+    journey.state == "completed"
+) {
+
+    Spacer(
+        modifier =
+            Modifier.height(6.dp)
+    )
+
+    Text(
+        text =
+            "Journey completed",
+
+        style =
+            MaterialTheme
+                .typography
+                .bodyMedium,
+
+        color =
+            MaterialTheme
+                .colorScheme
+                .primary,
+
+        fontWeight =
+            FontWeight.SemiBold
+    )
+}
+
+if (
+    journey.state == "cancelled"
+) {
+
+    Spacer(
+        modifier =
+            Modifier.height(6.dp)
+    )
+
+    Text(
+        text =
+            "Journey cancelled",
+
+        style =
+            MaterialTheme
+                .typography
+                .bodyMedium,
+
+        color =
+            MaterialTheme
+                .colorScheme
+                .error,
+
+        fontWeight =
+            FontWeight.SemiBold
+    )
+}
 
 
             if (

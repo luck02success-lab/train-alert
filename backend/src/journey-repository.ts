@@ -1,7 +1,9 @@
 import type { Journey } from "./domain.js";
 
 export interface JourneyRepository {
-  create(journey: Journey): Promise<Journey>;
+  create(
+    journey: Journey
+  ): Promise<Journey>;
 
   createWithAlerts(
     journey: Journey
@@ -12,7 +14,8 @@ export interface JourneyRepository {
     eta: Date,
     delayMinutes: number | null,
     observedAt: Date,
-    providerState: Journey["state"] | null
+    providerState:
+      Journey["state"] | null
   ): Promise<Journey | null>;
 
   updateAlertPreferences(
@@ -71,7 +74,8 @@ type JourneyRow = {
   destinationStationCode: string;
   destinationStationName: string;
   state: Journey["state"];
-  providerState: Journey["providerState"];
+  providerState:
+    Journey["providerState"];
   currentEta: Date | null;
   currentDelayMinutes: number | null;
   lastProviderUpdateAt: Date | null;
@@ -101,8 +105,10 @@ function mapJourney(
     destinationStationName:
       row.destinationStationName,
     state: row.state,
-    providerState: row.providerState,
-    currentEta: row.currentEta,
+    providerState:
+      row.providerState,
+    currentEta:
+      row.currentEta,
     currentDelayMinutes:
       row.currentDelayMinutes,
     lastProviderUpdateAt:
@@ -112,8 +118,10 @@ function mapJourney(
     alertOffsetsMinutes:
       row.alertOffsetsMinutes ??
       DEFAULT_ALERT_OFFSETS,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    createdAt:
+      row.createdAt,
+    updatedAt:
+      row.updatedAt,
   };
 }
 
@@ -203,7 +211,8 @@ export class PostgresJourneyRepository
   implements JourneyRepository
 {
   constructor(
-    private readonly db: PostgresClient
+    private readonly db:
+      PostgresClient
   ) {}
 
   async create(
@@ -307,7 +316,8 @@ export class PostgresJourneyRepository
     eta: Date,
     delayMinutes: number | null,
     observedAt: Date,
-    providerState: Journey["state"] | null
+    providerState:
+      Journey["state"] | null
   ): Promise<Journey | null> {
     return this.db.transaction(
       async (db) => {
@@ -329,9 +339,6 @@ export class PostgresJourneyRepository
 
               state =
                 CASE
-                  WHEN $2 <= now()
-                    THEN 'completed'::journey_state
-
                   WHEN
                     $5 = 'active'::journey_state
                     AND state = 'scheduled'::journey_state
@@ -377,21 +384,18 @@ export class PostgresJourneyRepository
             state = 'cancelled'
           WHERE journey_id = $1
             AND state = 'pending'
-            AND (
-              schedule_version < $2
-              OR $3 = 'completed'
-            )
+            AND schedule_version < $2
           `,
           [
             id,
             row.scheduleVersion,
-            row.state,
           ]
         );
 
         if (
-          row.state !== "completed" &&
-          row.currentEta
+          row.currentEta &&
+          row.state !==
+            "completed"
         ) {
           await insertAlerts(
             db,
@@ -402,7 +406,9 @@ export class PostgresJourneyRepository
           );
         }
 
-        return mapJourney(row);
+        return mapJourney(
+          row
+        );
       }
     );
   }
@@ -474,7 +480,9 @@ export class PostgresJourneyRepository
           );
         }
 
-        return mapJourney(row);
+        return mapJourney(
+          row
+        );
       }
     );
   }
@@ -549,7 +557,9 @@ export class PostgresJourneyRepository
           [id]
         );
 
-        return mapJourney(row);
+        return mapJourney(
+          row
+        );
       }
     );
   }
@@ -653,7 +663,9 @@ export class PostgresJourneyRepository
           [id]
         );
 
-        return mapJourney(row);
+        return mapJourney(
+          row
+        );
       }
     );
   }

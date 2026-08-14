@@ -149,11 +149,8 @@ export class JourneyService {
               null,
             live.observedAt ??
               new Date(),
-
-            // Only promote scheduled -> active.
-            // Repository intentionally prevents
-            // accidental active -> scheduled regression.
-            live.status === "running"
+            live.status ===
+              "running"
               ? "active"
               : null
           );
