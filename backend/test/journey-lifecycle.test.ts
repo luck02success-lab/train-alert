@@ -11,47 +11,121 @@ import {
   newJourney,
 } from "../src/journey-lifecycle.js";
 
-const stop = {
-  stationCode: "GZB",
-  stationName: "Ghaziabad",
+const baseStops = [
+  {
+    stationCode: "LKO",
+    stationName: "Lucknow",
 
-  scheduledArrival:
-    "2026-08-14T12:27:00+05:30",
+    scheduledArrival:
+      "2026-08-14T10:00:00+05:30",
 
-  scheduledDeparture:
-    "2026-08-14T12:29:00+05:30",
+    scheduledDeparture:
+      "2026-08-14T10:05:00+05:30",
 
-  expectedArrival:
-    "2026-08-14T12:51:00+05:30",
+    expectedArrival:
+      "2026-08-14T10:00:00+05:30",
 
-  expectedDeparture:
-    "2026-08-14T12:53:00+05:30",
+    expectedDeparture:
+      "2026-08-14T10:05:00+05:30",
 
-  actualArrival: null,
-  actualDeparture: null,
+    actualArrival: null,
+    actualDeparture: null,
 
-  delayMinutes: 24,
+    delayMinutes: 0,
 
-  status: "upcoming",
-};
+    status: "passed",
+  },
+
+  {
+    stationCode: "GZB",
+    stationName: "Ghaziabad",
+
+    scheduledArrival:
+      "2026-08-14T12:27:00+05:30",
+
+    scheduledDeparture:
+      "2026-08-14T12:29:00+05:30",
+
+    expectedArrival:
+      "2026-08-14T12:51:00+05:30",
+
+    expectedDeparture:
+      "2026-08-14T12:53:00+05:30",
+
+    actualArrival: null,
+    actualDeparture: null,
+
+    delayMinutes: 24,
+
+    status: "upcoming",
+  },
+
+  {
+    stationCode: "NDLS",
+    stationName: "New Delhi",
+
+    scheduledArrival:
+      "2026-08-14T14:00:00+05:30",
+
+    scheduledDeparture:
+      "2026-08-14T14:05:00+05:30",
+
+    expectedArrival:
+      "2026-08-14T14:24:00+05:30",
+
+    expectedDeparture:
+      "2026-08-14T14:29:00+05:30",
+
+    actualArrival: null,
+    actualDeparture: null,
+
+    delayMinutes: 24,
+
+    status: "upcoming",
+  },
+
+  {
+    stationCode: "PNBE",
+    stationName: "Patna Junction",
+
+    scheduledArrival:
+      "2026-08-14T18:00:00+05:30",
+
+    scheduledDeparture:
+      "2026-08-14T18:05:00+05:30",
+
+    expectedArrival:
+      "2026-08-14T18:24:00+05:30",
+
+    expectedDeparture:
+      "2026-08-14T18:29:00+05:30",
+
+    actualArrival: null,
+    actualDeparture: null,
+
+    delayMinutes: 24,
+
+    status: "upcoming",
+  },
+];
 
 const liveTrain = {
-  trainNumber: "12203",
+  trainNumber: "12919",
   journeyDate: "2026-08-14",
   status:
     "running" as const,
 
   currentStation:
-    "Hapur Junction",
+    "GZB",
 
   currentStationCode:
-    "HZD",
+    "GZB",
 
   previousStation:
-    "HZD",
+    "LKO",
 
   nextStation:
-    "GZB",
+    "NDLS",
 
   delayMinutes: 24,
 
@@ -60,12 +134,11 @@ const liveTrain = {
 
   observedAt:
     new Date(
-      "2026-08-14T07:00:00.000Z"
+      "2026-08-14T06:30:00.000Z"
     ),
 
-  stops: [
-    stop,
-  ],
+  stops:
+    baseStops,
 };
 
 describe(
@@ -74,6 +147,9 @@ describe(
     it(
       "uses expected arrival when it agrees with scheduled arrival plus delay",
       () => {
+        const stop =
+          baseStops[1]!;
+
         const eta =
           destinationEta(
             stop,
@@ -92,10 +168,10 @@ describe(
     );
 
     it(
-      "uses the current destination delay when provider expectedArrival points to the wrong occurrence",
+      "uses current destination delay when provider expectedArrival points to wrong occurrence",
       () => {
-        const malformedStop = {
-          ...stop,
+        const stop = {
+          ...baseStops[1]!,
           expectedArrival:
             "2026-08-15T10:27:00+05:30",
           scheduledArrival:
@@ -105,17 +181,13 @@ describe(
 
         const eta =
           destinationEta(
-            malformedStop,
+            stop,
             liveTrain,
             new Date(
               "2026-08-14T06:30:00.000Z"
             )
           );
 
-        /*
-         * 12:27 + 24 min = 12:51 IST
-         * = 07:21 UTC
-         */
         expect(
           eta.toISOString()
         ).toBe(
@@ -127,8 +199,8 @@ describe(
     it(
       "falls back to train delay when destination delay is unavailable",
       () => {
-        const noStopDelay = {
-          ...stop,
+        const stop = {
+          ...baseStops[1]!,
           expectedArrival:
             "2026-08-15T10:27:00+05:30",
           delayMinutes: null,
@@ -136,7 +208,7 @@ describe(
 
         const eta =
           destinationEta(
-            noStopDelay,
+            stop,
             {
               ...liveTrain,
               delayMinutes: 24,
@@ -157,8 +229,8 @@ describe(
     it(
       "supports an early train",
       () => {
-        const earlyStop = {
-          ...stop,
+        const stop = {
+          ...baseStops[1]!,
           scheduledArrival:
             "2026-08-14T13:00:00+05:30",
           expectedArrival:
@@ -168,7 +240,7 @@ describe(
 
         const eta =
           destinationEta(
-            earlyStop,
+            stop,
             {
               ...liveTrain,
               delayMinutes: -20,
@@ -187,26 +259,122 @@ describe(
     );
 
     it(
-      "rejects destination already reached",
+      "rejects destination already reached using actual arrival",
       () => {
-        const reachedStop = {
-          ...stop,
+        const stop = {
+          ...baseStops[1]!,
           actualArrival:
-            "2026-08-14T07:15:00+05:30",
+            "2026-08-14T12:35:00+05:30",
         };
 
         expect(() =>
           destinationEta(
-            reachedStop,
+            stop,
             liveTrain,
             new Date(
-              "2026-08-14T02:30:00.000Z"
+              "2026-08-14T12:40:00+05:30"
             )
           )
         ).toThrowError(
           expect.objectContaining({
             code:
               "DESTINATION_ALREADY_REACHED",
+          })
+        );
+      }
+    );
+
+    it(
+      "rejects destination already passed using route position",
+      () => {
+        const trainAfterDestination = {
+          ...liveTrain,
+
+          currentStation:
+            "PNBE",
+
+          currentStationCode:
+            "PNBE",
+
+          previousStation:
+            "NDLS",
+
+          nextStation:
+            null,
+
+          stops:
+            baseStops,
+        };
+
+        const destination =
+          baseStops[2]!; // NDLS
+
+        expect(() =>
+          destinationEta(
+            destination,
+            trainAfterDestination,
+            new Date(
+              "2026-08-14T13:00:00+05:30"
+            )
+          )
+        ).toThrowError(
+          expect.objectContaining({
+            code:
+              "DESTINATION_ALREADY_REACHED",
+          })
+        );
+      }
+    );
+
+    it(
+      "rejects inconsistent future destination ETA instead of creating a stale journey",
+      () => {
+        const stop = {
+          ...baseStops[2]!, // NDLS
+          scheduledArrival:
+            "2026-08-14T13:00:00+05:30",
+          expectedArrival:
+            "2026-08-14T12:33:00+05:30",
+          delayMinutes: -27,
+        };
+
+        const train = {
+          ...liveTrain,
+
+          currentStation:
+            "GZB",
+
+          currentStationCode:
+            "GZB",
+
+          previousStation:
+            "LKO",
+
+          nextStation:
+            "NDLS",
+
+          delayMinutes: -27,
+
+          stops: [
+            baseStops[0]!,
+            baseStops[1]!,
+            stop,
+            baseStops[3]!,
+          ],
+        };
+
+        expect(() =>
+          destinationEta(
+            stop,
+            train,
+            new Date(
+              "2026-08-14T12:41:00+05:30"
+            )
+          )
+        ).toThrowError(
+          expect.objectContaining({
+            code:
+              "DESTINATION_ETA_INCONSISTENT",
           })
         );
       }
@@ -250,11 +418,15 @@ describe(
         expect(() =>
           newJourney(
             "00000000-0000-0000-0000-000000000001",
+
             {
               ...liveTrain,
-              status: "completed",
+              status:
+                "completed",
             },
+
             "GZB",
+
             new Date(
               "2026-08-14T06:30:00.000Z"
             )
@@ -269,13 +441,44 @@ describe(
     );
 
     it(
+      "rejects a train with unknown status",
+      () => {
+        expect(() =>
+          newJourney(
+            "00000000-0000-0000-0000-000000000001",
+
+            {
+              ...liveTrain,
+              status:
+                "unknown",
+            },
+
+            "GZB",
+
+            new Date(
+              "2026-08-14T06:30:00.000Z"
+            )
+          )
+        ).toThrowError(
+          expect.objectContaining({
+            code:
+              "TRAIN_STATUS_UNKNOWN",
+          })
+        );
+      }
+    );
+
+    it(
       "creates an active journey for a running train",
       () => {
         const journey =
           newJourney(
             "00000000-0000-0000-0000-000000000001",
+
             liveTrain,
+
             "GZB",
+
             new Date(
               "2026-08-14T06:30:00.000Z"
             )
@@ -303,6 +506,15 @@ describe(
         expect(
           journey.scheduleVersion
         ).toBe(0);
+
+        expect(
+          journey.alertOffsetsMinutes
+        ).toEqual([
+          120,
+          60,
+          30,
+          15,
+        ]);
       }
     );
   }

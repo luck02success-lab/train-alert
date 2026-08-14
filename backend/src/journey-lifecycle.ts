@@ -10,8 +10,7 @@ import type {
   TrainLiveStop,
 } from "./providers/railradar.js";
 
-export class JourneyLifecycleError
-  extends Error {
+export class JourneyLifecycleError extends Error {
   constructor(
     readonly code: string,
     message: string
@@ -24,11 +23,10 @@ export function resolveDestination(
   live: TrainLiveStatus,
   code: string
 ): TrainLiveStop {
-  const stop =
-    live.stops.find(
-      (x) =>
-        x.stationCode === code
-    );
+  const stop = live.stops.find(
+    (item) =>
+      item.stationCode === code
+  );
 
   if (!stop) {
     throw new JourneyLifecycleError(
@@ -47,8 +45,7 @@ function parseDate(
     return null;
   }
 
-  const parsed =
-    new Date(value);
+  const parsed = new Date(value);
 
   return Number.isNaN(
     parsed.getTime()
@@ -57,208 +54,200 @@ function parseDate(
     : parsed;
 }
 
+function delayValue(
+  value: number | null
+): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value)
+    ? value
+    : null;
+}
+
 function effectiveDelayMinutes(
   stop: TrainLiveStop,
   live: TrainLiveStatus
 ): number | null {
-  if (
-    typeof stop.delayMinutes ===
-      "number" &&
-    Number.isFinite(
+  const stopDelay =
+    delayValue(
       stop.delayMinutes
-    )
-  ) {
-    return stop.delayMinutes;
+    );
+
+  if (stopDelay !== null) {
+    return stopDelay;
   }
 
-  if (
-    typeof live.delayMinutes ===
-      "number" &&
-    Number.isFinite(
-      live.delayMinutes
-    )
-  ) {
-    return live.delayMinutes;
-  }
-
-  return null;
+  return delayValue(
+    live.delayMinutes
+  );
 }
 
-function choosePredictedArrival(
-  stop: TrainLiveStop,
+function routeIndex(
   live: TrainLiveStatus,
-  now: Date
-): Date {
-  const scheduledArrival =
-    parseDate(
-      stop.scheduledArrival
+  stationCode: string | null
+): number {
+  if (!stationCode) {
+    return -1;
+  }
+
+  return live.stops.findIndex(
+    (stop) =>
+      stop.stationCode ===
+      stationCode
+  );
+}
+
+export type DestinationPosition =
+  | "ahead"
+  | "current"
+  | "passed"
+  | "unknown";
+
+export function destinationPosition(
+  live: TrainLiveStatus,
+  destinationCode: string
+): DestinationPosition {
+  const destinationIndex =
+    routeIndex(
+      live,
+      destinationCode
     );
 
-  const expectedArrival =
-    parseDate(
-      stop.expectedArrival
-    );
+  if (
+    destinationIndex < 0
+  ) {
+    return "unknown";
+  }
 
-  const actualArrival =
-    parseDate(
-      stop.actualArrival
-    );
-
-  const actualDeparture =
-    parseDate(
-      stop.actualDeparture
+  const currentIndex =
+    routeIndex(
+      live,
+      live.currentStationCode
     );
 
   /*
-   * If the destination was already reached,
-   * the journey should not be created as an upcoming
-   * journey.
+   * If RailRadar doesn't expose the current station code,
+   * use next/previous station as a weaker signal.
    */
-  if (
-    actualArrival &&
-    actualArrival.getTime() <=
-      now.getTime()
-  ) {
-    throw new JourneyLifecycleError(
-      "DESTINATION_ALREADY_REACHED",
-      "The train has already reached the selected destination."
-    );
-  }
-
-  if (
-    actualDeparture &&
-    actualDeparture.getTime() <=
-      now.getTime()
-  ) {
-    throw new JourneyLifecycleError(
-      "DESTINATION_ALREADY_REACHED",
-      "The train has already passed the selected destination."
-    );
-  }
-
-  const delay =
-    effectiveDelayMinutes(
-      stop,
-      live
-    );
-
-  /*
-   * Best source:
-   * RailRadar's expected arrival, provided it is internally
-   * consistent with the scheduled arrival + current delay.
-   *
-   * This protects us from malformed or stale timestamps such
-   * as "tomorrow 10:27" for a station that should be reached
-   * today around 12:27 + current delay.
-   */
-  if (
-    expectedArrival
-  ) {
-    if (
-      !scheduledArrival
-    ) {
-      if (
-        expectedArrival.getTime() >
-        now.getTime()
-      ) {
-        return expectedArrival;
-      }
-    } else if (
-      delay === null
-    ) {
-      /*
-       * When the provider does not expose a usable delay,
-       * trust its expected ETA if it is still in the future.
-       */
-      if (
-        expectedArrival.getTime() >
-        now.getTime()
-      ) {
-        return expectedArrival;
-      }
-    } else {
-      const predictedFromSchedule =
-        new Date(
-          scheduledArrival.getTime() +
-            delay * 60_000
-        );
-
-      const deviationMinutes =
-        Math.abs(
-          expectedArrival.getTime() -
-            predictedFromSchedule.getTime()
-        ) / 60_000;
-
-      /*
-       * A small difference is normal because providers can
-       * calculate ETA with more information than the displayed
-       * delay value.
-       *
-       * A large difference means expectedArrival is not a
-       * trustworthy timestamp for this occurrence.
-       */
-      if (
-        deviationMinutes <= 10
-      ) {
-        if (
-          expectedArrival.getTime() >
-          now.getTime()
-        ) {
-          return expectedArrival;
-        }
-      }
-    }
-  }
-
-  /*
-   * Fallback: construct the ETA from today's/this journey's
-   * scheduled arrival plus the best current delay information.
-   *
-   * This is the critical path for delayed trains where the
-   * provider's expectedArrival timestamp is malformed or points
-   * to the wrong calendar occurrence.
-   */
-  if (
-    scheduledArrival &&
-    delay !== null
-  ) {
-    const calculated =
-      new Date(
-        scheduledArrival.getTime() +
-          delay * 60_000
+  if (currentIndex < 0) {
+    const nextIndex =
+      routeIndex(
+        live,
+        live.nextStation
       );
 
     if (
-      calculated.getTime() >
-      now.getTime()
+      nextIndex >= 0
     ) {
-      return calculated;
+      if (
+        destinationIndex <
+        nextIndex
+      ) {
+        return "passed";
+      }
+
+      if (
+        destinationIndex ===
+        nextIndex
+      ) {
+        return "ahead";
+      }
+
+      return "ahead";
     }
 
-    /*
-     * The calculated ETA is now in the past. We keep it as the
-     * best known ETA so the lifecycle layer can mark the journey
-     * appropriately instead of incorrectly moving it to tomorrow.
-     */
-    return calculated;
+    const previousIndex =
+      routeIndex(
+        live,
+        live.previousStation
+      );
+
+    if (
+      previousIndex >= 0
+    ) {
+      if (
+        destinationIndex <
+        previousIndex
+      ) {
+        return "passed";
+      }
+
+      if (
+        destinationIndex ===
+        previousIndex
+      ) {
+        return "ahead";
+      }
+
+      return "ahead";
+    }
+
+    return "unknown";
   }
 
   if (
-    expectedArrival
+    destinationIndex <
+    currentIndex
   ) {
-    return expectedArrival;
+    return "passed";
   }
 
   if (
-    scheduledArrival
+    destinationIndex ===
+    currentIndex
   ) {
-    return scheduledArrival;
+    return "current";
   }
 
-  throw new JourneyLifecycleError(
-    "DESTINATION_ETA_UNAVAILABLE",
-    "An arrival time is not available for this destination."
-  );
+  return "ahead";
+}
+
+function providerExpectedEtaIsPlausible(
+  expectedArrival: Date,
+  scheduledArrival: Date | null,
+  delayMinutes: number | null,
+  now: Date
+): boolean {
+  /*
+   * An ETA in the past cannot be used to create an upcoming
+   * journey. We only accept it later if another stronger
+   * route-position signal proves the destination has already
+   * been reached.
+   */
+  if (
+    expectedArrival.getTime() <=
+    now.getTime()
+  ) {
+    return false;
+  }
+
+  /*
+   * If we have no scheduled baseline, the future provider ETA
+   * is the best source available.
+   */
+  if (
+    !scheduledArrival ||
+    delayMinutes === null
+  ) {
+    return true;
+  }
+
+  const delayAdjusted =
+    new Date(
+      scheduledArrival.getTime() +
+        delayMinutes * 60_000
+    );
+
+  /*
+   * Allow modest provider differences because live ETA engines
+   * can use additional information beyond the displayed delay.
+   */
+  const deviationMinutes =
+    Math.abs(
+      expectedArrival.getTime() -
+        delayAdjusted.getTime()
+    ) / 60_000;
+
+  return deviationMinutes <= 10;
 }
 
 export function destinationEta(
@@ -267,8 +256,7 @@ export function destinationEta(
   now = new Date()
 ): Date {
   /*
-   * Preserve the simpler helper behavior for existing callers
-   * and tests that only have a single stop.
+   * Backwards-compatible simple mode for older unit tests/callers.
    */
   if (!live) {
     const raw =
@@ -300,10 +288,163 @@ export function destinationEta(
     return value;
   }
 
-  return choosePredictedArrival(
-    stop,
-    live,
-    now
+  const position =
+    destinationPosition(
+      live,
+      stop.stationCode
+    );
+
+  const actualArrival =
+    parseDate(
+      stop.actualArrival
+    );
+
+  const actualDeparture =
+    parseDate(
+      stop.actualDeparture
+    );
+
+  /*
+   * Strongest possible signal:
+   * the destination has already been reached.
+   */
+  if (
+    actualArrival &&
+    actualArrival.getTime() <=
+      now.getTime()
+  ) {
+    throw new JourneyLifecycleError(
+      "DESTINATION_ALREADY_REACHED",
+      "The train has already reached the selected destination."
+    );
+  }
+
+  if (
+    actualDeparture &&
+    actualDeparture.getTime() <=
+      now.getTime()
+  ) {
+    throw new JourneyLifecycleError(
+      "DESTINATION_ALREADY_REACHED",
+      "The train has already passed the selected destination."
+    );
+  }
+
+  /*
+   * Route position is stronger than a broken ETA.
+   */
+  if (
+    position === "passed"
+  ) {
+    throw new JourneyLifecycleError(
+      "DESTINATION_ALREADY_REACHED",
+      "The train has already passed the selected destination."
+    );
+  }
+
+  const scheduledArrival =
+    parseDate(
+      stop.scheduledArrival
+    );
+
+  const expectedArrival =
+    parseDate(
+      stop.expectedArrival
+    );
+
+  const delayMinutes =
+    effectiveDelayMinutes(
+      stop,
+      live
+    );
+
+  /*
+   * 1. Trust RailRadar expected ETA when:
+   *    - it is in the future
+   *    - and it is reasonably consistent with the scheduled
+   *      arrival plus current delay.
+   */
+  if (
+    expectedArrival &&
+    providerExpectedEtaIsPlausible(
+      expectedArrival,
+      scheduledArrival,
+      delayMinutes,
+      now
+    )
+  ) {
+    return expectedArrival;
+  }
+
+  /*
+   * 2. Fallback to scheduled arrival + current delay.
+   *
+   * This is the important case for delayed trains such as:
+   *
+   * scheduled = 12:27
+   * delay     = +24
+   * ETA       = 12:51
+   */
+  if (
+    scheduledArrival &&
+    delayMinutes !== null
+  ) {
+    const calculated =
+      new Date(
+        scheduledArrival.getTime() +
+          delayMinutes *
+            60_000
+      );
+
+    if (
+      calculated.getTime() >
+      now.getTime()
+    ) {
+      return calculated;
+    }
+  }
+
+  /*
+   * 3. Scheduled future arrival is still usable if we don't have
+   * a trustworthy live ETA/delay.
+   */
+  if (
+    scheduledArrival &&
+    scheduledArrival.getTime() >
+      now.getTime()
+  ) {
+    /*
+     * However, if the provider explicitly says the destination
+     * ETA is in the past while the route position says the
+     * destination is still ahead, the data is contradictory.
+     *
+     * Do NOT manufacture an ETA or silently move the journey
+     * to tomorrow.
+     */
+    if (
+      expectedArrival &&
+      expectedArrival.getTime() <=
+        now.getTime() &&
+      (
+        position === "ahead" ||
+        position === "unknown"
+      )
+    ) {
+      throw new JourneyLifecycleError(
+        "DESTINATION_ETA_INCONSISTENT",
+        "Live railway data for this destination is currently inconsistent. Please try again shortly."
+      );
+    }
+
+    return scheduledArrival;
+  }
+
+  /*
+   * 4. We have no trustworthy future ETA.
+   */
+  throw new JourneyLifecycleError(
+    "DESTINATION_ETA_INCONSISTENT",
+    "Live railway data for this destination is currently inconsistent. Please try again shortly."
   );
 }
 
@@ -312,16 +453,20 @@ export function canTransition(
   to: Journey["state"]
 ): boolean {
   return (
-    (from === "scheduled" &&
+    (
+      from === "scheduled" &&
       [
         "active",
         "cancelled",
-      ].includes(to)) ||
-    (from === "active" &&
+      ].includes(to)
+    ) ||
+    (
+      from === "active" &&
       [
         "completed",
         "cancelled",
-      ].includes(to))
+      ].includes(to)
+    )
   );
 }
 
@@ -399,11 +544,6 @@ export function newJourney(
       now
     );
 
-  /*
-   * If the destination is already in the past, don't create an
-   * upcoming journey. This protects against stale provider data
-   * and prevents alerts being incorrectly scheduled for tomorrow.
-   */
   if (
     eta.getTime() <=
     now.getTime()
