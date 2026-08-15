@@ -499,10 +499,34 @@ export class PostgresJourneyRepository
           'scheduled',
           'active'
         )
+        AND current_eta IS NOT NULL
+        AND current_eta <=
+          now() + interval '6 hours'
+        AND current_eta >=
+          now() - interval '2 hours'
         AND (
           last_provider_update_at IS NULL
           OR last_provider_update_at <=
-            now() - interval '5 minutes'
+            now() -
+              CASE
+                WHEN current_eta <=
+                  now() + interval '15 minutes'
+                  THEN interval '2 minutes'
+
+                WHEN current_eta <=
+                  now() + interval '30 minutes'
+                  THEN interval '3 minutes'
+
+                WHEN current_eta <=
+                  now() + interval '1 hour'
+                  THEN interval '5 minutes'
+
+                WHEN current_eta <=
+                  now() + interval '2 hours'
+                  THEN interval '10 minutes'
+
+                ELSE interval '30 minutes'
+              END
         )
         ORDER BY
           last_provider_update_at ASC NULLS FIRST,
