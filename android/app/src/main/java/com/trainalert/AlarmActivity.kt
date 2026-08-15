@@ -7,31 +7,16 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import android.widget.Toast
+
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,7 +29,6 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 
 class AlarmActivity : ComponentActivity() {
-
     companion object {
         const val EXTRA_TITLE = "title"
         const val EXTRA_BODY = "body"
@@ -78,34 +62,52 @@ class AlarmActivity : ComponentActivity() {
         val offsetMinutes = intent.getIntExtra(EXTRA_OFFSET_MINUTES, 15)
 
         setContent {
+            var snoozing by remember { mutableStateOf(false) }
+
             AlarmScreen(
                 context = this,
                 title = title.ifBlank { "WAKE UP" },
                 body = body.ifBlank { "Your stop is approaching." },
                 offsetMinutes = offsetMinutes,
+                snoozing = snoozing,
                 onDismiss = {
                     AlarmSnoozeScheduler.cancel(this, notificationId)
-                    com.trainalert.notification.NotificationHelper.dismissNotification(
-                        this,
-                        notificationId
-                    )
+                    com.trainalert.notification.NotificationHelper
+                        .dismissNotification(this, notificationId)
                     finishAndRemoveTask()
                 },
                 onSnooze = { minutes ->
-                    AlarmSnoozeScheduler.snooze(
+                    if (snoozing) return@AlarmScreen
+
+                    snoozing = true
+
+                    AlarmSnoozeScheduler.snoozeForJourney(
                         context = this,
-                        delayMinutes = minutes,
+                        journeyId = journeyId,
+                        requestedMinutes = minutes,
                         title = title.ifBlank { "WAKE UP" },
                         body = body.ifBlank { "Your stop is approaching." },
-                        journeyId = journeyId,
                         notificationId = notificationId,
-                        offsetMinutes = offsetMinutes
+                        offsetMinutes = offsetMinutes,
+                        onScheduled = { scheduled ->
+                            runOnUiThread {
+                                snoozing = false
+
+                                if (!scheduled) {
+                                    Toast.makeText(
+                                        this,
+                                        "Your stop is very close. Stay awake.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    return@runOnUiThread
+                                }
+
+                                com.trainalert.notification.NotificationHelper
+                                    .dismissNotification(this, notificationId)
+                                finishAndRemoveTask()
+                            }
+                        }
                     )
-                    com.trainalert.notification.NotificationHelper.dismissNotification(
-                        this,
-                        notificationId
-                    )
-                    finishAndRemoveTask()
                 }
             )
         }
@@ -118,12 +120,14 @@ private fun AlarmScreen(
     title: String,
     body: String,
     offsetMinutes: Int,
+    snoozing: Boolean,
     onDismiss: () -> Unit,
     onSnooze: (Int) -> Unit
 ) {
     val alarmUri = remember {
         RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
     }
+
     var ringtone by remember { mutableStateOf<Ringtone?>(null) }
 
     DisposableEffect(alarmUri) {
@@ -135,9 +139,7 @@ private fun AlarmScreen(
             .build()
         tone?.play()
 
-        onDispose {
-            ringtone?.stop()
-        }
+        onDispose { ringtone?.stop() }
     }
 
     Surface(
@@ -151,12 +153,11 @@ private fun AlarmScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(text = "🚆", fontSize = 48.sp)
-
+            Text("🚆", fontSize = 48.sp)
             Spacer(Modifier.height(26.dp))
 
             Text(
-                text = title,
+                title,
                 color = Color.White,
                 fontSize = 42.sp,
                 fontWeight = FontWeight.Bold
@@ -165,7 +166,7 @@ private fun AlarmScreen(
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = body,
+                body,
                 color = Color.White,
                 style = MaterialTheme.typography.titleLarge
             )
@@ -173,7 +174,7 @@ private fun AlarmScreen(
             Spacer(Modifier.height(28.dp))
 
             Text(
-                text = if (offsetMinutes <= 15) {
+                if (offsetMinutes <= 15) {
                     "Your stop is approaching."
                 } else {
                     "It's time to get ready."
@@ -195,9 +196,7 @@ private fun AlarmScreen(
                         detectTapGestures(
                             onPress = {
                                 try {
-                                    withTimeout(2000) {
-                                        awaitRelease()
-                                    }
+                                    withTimeout(2000) { awaitRelease() }
                                 } catch (_: TimeoutCancellationException) {
                                     onDismiss()
                                 }
@@ -208,13 +207,13 @@ private fun AlarmScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "I'M",
+                        "I'M",
                         color = Color.White,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "AWAKE",
+                        "AWAKE",
                         color = Color.White,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold
@@ -225,7 +224,7 @@ private fun AlarmScreen(
             Spacer(Modifier.height(14.dp))
 
             Text(
-                text = "Hold for 2 seconds to dismiss",
+                "Hold for 2 seconds to dismiss",
                 color = Color.White.copy(alpha = 0.82f),
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -233,7 +232,7 @@ private fun AlarmScreen(
             Spacer(Modifier.height(24.dp))
 
             Text(
-                text = "Snooze",
+                "Snooze",
                 color = Color.White,
                 fontWeight = FontWeight.Bold
             )
@@ -242,15 +241,23 @@ private fun AlarmScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center
             ) {
-                TextButton(onClick = { onSnooze(5) }) {
-                    Text("5 min", color = Color.White)
+                listOf(5, 10, 15).forEach { minutes ->
+                    TextButton(
+                        enabled = !snoozing && minutes < maxOf(offsetMinutes, 6),
+                        onClick = { onSnooze(minutes) }
+                    ) {
+                        Text("$minutes min", color = Color.White)
+                    }
                 }
-                TextButton(onClick = { onSnooze(10) }) {
-                    Text("10 min", color = Color.White)
-                }
-                TextButton(onClick = { onSnooze(15) }) {
-                    Text("15 min", color = Color.White)
-                }
+            }
+
+            if (snoozing) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Checking your latest ETA…",
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }
