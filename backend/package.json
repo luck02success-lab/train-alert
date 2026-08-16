@@ -8,7 +8,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "update:railway-catalog": "node scripts/update-railway-catalog.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
