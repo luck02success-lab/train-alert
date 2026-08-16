@@ -449,7 +449,7 @@ val cancelledJourneys =
             .isNullOrBlank()
     ) {
 
-        JourneyDetailScreen(
+        ActiveJourneyScreen(
             context = context,
 
             journeyId =
