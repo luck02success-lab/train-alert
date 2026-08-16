@@ -1,8 +1,13 @@
 import {
   ProviderError,
-  RailRadarProvider,
   type TrainLiveStatus,
 } from "./providers/railradar.js";
+import {
+  createRailProviderGateway,
+} from "./rail-provider-factory.js";
+import {
+  RailProviderGateway,
+} from "./rail-provider-gateway.js";
 
 export class ApiError
   extends Error {
@@ -29,13 +34,9 @@ export function validateLiveQuery(
 
   if (
     !date ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(
-      date
-    ) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
     Number.isNaN(
-      Date.parse(
-        `${date}T00:00:00Z`
-      )
+      Date.parse(`${date}T00:00:00Z`)
     )
   ) {
     throw new ApiError(
@@ -49,21 +50,12 @@ export function validateLiveQuery(
 }
 
 function dateValue(
-  value:
-    | string
-    | null
-    | undefined
+  value: string | null | undefined
 ): Date | null {
-  if (!value) {
-    return null;
-  }
+  if (!value) return null;
 
-  const parsed =
-    new Date(value);
-
-  return Number.isNaN(
-    parsed.getTime()
-  )
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
     ? null
     : parsed;
 }
@@ -73,21 +65,14 @@ function destinationLooksSuspicious(
   destinationStationCode: string,
   now: Date
 ): boolean {
-  const destination =
-    live.stops.find(
-      (stop) =>
-        stop.stationCode ===
-        destinationStationCode
-    );
+  const destination = live.stops.find(
+    (stop) =>
+      stop.stationCode ===
+      destinationStationCode
+  );
 
-  if (!destination) {
-    return true;
-  }
+  if (!destination) return true;
 
-  /*
-   * If destination is still the next halt, always consider any
-   * actual-arrival timestamp suspicious until cross-checked.
-   */
   const destinationIsNext =
     live.nextStationCode ===
       destinationStationCode ||
@@ -104,17 +89,11 @@ function destinationLooksSuspicious(
     return true;
   }
 
-  /*
-   * Same logic using actual route position.
-   */
   if (
     live.isActualPosition &&
-    typeof live.currentSequence ===
-      "number" &&
-    typeof destination.sequence ===
-      "number" &&
-    destination.sequence >
-      live.currentSequence &&
+    typeof live.currentSequence === "number" &&
+    typeof destination.sequence === "number" &&
+    destination.sequence > live.currentSequence &&
     (
       destination.actualArrival ||
       destination.actualDeparture
@@ -130,10 +109,8 @@ function destinationLooksSuspicious(
 
   if (
     (
-      stopStatus ===
-        "upcoming" ||
-      stopStatus ===
-        "scheduled"
+      stopStatus === "upcoming" ||
+      stopStatus === "scheduled"
     ) &&
     (
       destination.actualArrival ||
@@ -143,49 +120,40 @@ function destinationLooksSuspicious(
     return true;
   }
 
-  const expected =
-    dateValue(
-      destination.expectedArrival
-    );
+  const expected = dateValue(
+    destination.expectedArrival
+  );
 
-  if (
+  return Boolean(
     expected &&
-    expected.getTime() <=
-      now.getTime() &&
+    expected.getTime() <= now.getTime() &&
     !destination.actualArrival &&
     !destination.actualDeparture
-  ) {
-    return true;
-  }
-
-  return false;
+  );
 }
 
 export class TrainService {
   constructor(
-    private readonly provider:
-      RailRadarProvider =
-        new RailRadarProvider()
+    private readonly gateway:
+      RailProviderGateway =
+        createRailProviderGateway()
   ) {}
 
   async live(
     number: string,
     date: string,
-    destinationStationCode?:
-      string
+    destinationStationCode?: string
   ): Promise<TrainLiveStatus> {
-    validateLiveQuery(
-      number,
-      date
-    );
+    validateLiveQuery(number, date);
 
     try {
-      let live =
-        await this.provider
-          .getLiveTrain(
-            number,
-            date
-          );
+      const result =
+        await this.gateway.getLiveTrain(
+          number,
+          date
+        );
+
+      let live = result.data;
 
       if (
         destinationStationCode &&
@@ -195,72 +163,57 @@ export class TrainService {
           new Date()
         )
       ) {
-        live =
-          await this.provider
+        const enriched =
+          await this.gateway
             .enrichDestinationWhenSuspicious(
               live,
-              destinationStationCode
+              destinationStationCode,
+              result.provider
             );
+
+        live = enriched.data;
       }
 
       return live;
     } catch (error) {
-      if (
-        error instanceof
-        ProviderError
-      ) {
-        const mapping:
-          Record<
-            ProviderError["code"],
-            readonly [
-              number,
-              string
-            ]
-          > = {
+      if (error instanceof ProviderError) {
+        const mapping: Record<
+          ProviderError["code"],
+          readonly [number, string]
+        > = {
           UNAUTHORIZED: [
             502,
             "PROVIDER_AUTHENTICATION_FAILED",
           ],
-
           TRAIN_NOT_FOUND: [
             404,
             "TRAIN_NOT_FOUND",
           ],
-
           STATION_NOT_FOUND: [
             503,
             "DESTINATION_LIVE_DATA_UNAVAILABLE",
           ],
-
           RATE_LIMITED: [
             429,
             "PROVIDER_RATE_LIMITED",
           ],
-
           UNAVAILABLE: [
             503,
             "PROVIDER_UNAVAILABLE",
           ],
-
           MALFORMED_RESPONSE: [
             502,
             "MALFORMED_PROVIDER_RESPONSE",
           ],
         };
 
-        const [
-          status,
-          code,
-        ] =
-          mapping[
-            error.code
-          ];
+        const [status, code] =
+          mapping[error.code];
 
         throw new ApiError(
           status,
           code,
-          code ===
-            "TRAIN_NOT_FOUND"
+          code === "TRAIN_NOT_FOUND"
             ? "The requested train could not be found."
             : code ===
                 "DESTINATION_LIVE_DATA_UNAVAILABLE"

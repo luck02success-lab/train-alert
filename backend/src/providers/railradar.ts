@@ -347,6 +347,7 @@ function parseStop(
 }
 
 export class RailRadarProvider {
+  readonly name = "railradar";
   constructor(
     private readonly apiKey =
       process.env.RAILRADAR_API_KEY,

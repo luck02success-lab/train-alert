@@ -35,8 +35,8 @@ import {
 } from "./journey-refresh-worker.js";
 
 import {
-  RailRadarProvider,
-} from "./providers/railradar.js";
+  createRailProviderGateway,
+} from "./rail-provider-factory.js";
 
 import {
   TrainService,
@@ -82,7 +82,7 @@ export const userService =
   );
 
 const provider =
-  new RailRadarProvider();
+  createRailProviderGateway();
 
 const trains =
   new TrainService(
