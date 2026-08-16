@@ -1,3 +1,8 @@
+
+import {
+  searchStationsFromFallback,
+} from "./station-catalog-fallback.js";
+
 type TrainSuggestion = {
   number: string;
   name: string;
@@ -12,6 +17,16 @@ type RailRadarEnvelope<T> = {
   success: boolean;
   data: T;
 };
+
+class RailRadarError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "RailRadarError";
+  }
+}
 
 const RAILRADAR_BASE =
   "https://api.railradar.in";
@@ -36,8 +51,12 @@ let stationsCache:
     }
   | null = null;
 
+let stationsRefreshPromise:
+  Promise<StationSuggestion[]> | null = null;
+
 function getApiKey(): string {
-  const key = process.env.RAILRADAR_API_KEY;
+  const key =
+    process.env.RAILRADAR_API_KEY;
 
   if (!key) {
     throw new Error(
@@ -51,20 +70,26 @@ function getApiKey(): string {
 async function fetchRailRadar<T>(
   path: string
 ): Promise<T> {
-  const response = await fetch(
-    `${RAILRADAR_BASE}${path}`,
-    {
-      headers: {
-        Authorization:
-          `Bearer ${getApiKey()}`,
-      },
-      signal:
-        AbortSignal.timeout(8_000),
-    }
-  );
+  const response =
+    await fetch(
+      `${RAILRADAR_BASE}${path}`,
+      {
+        headers: {
+          Authorization:
+            `Bearer ${getApiKey()}`,
+          Accept:
+            "application/json",
+        },
+        signal:
+          AbortSignal.timeout(
+            8_000
+          ),
+      }
+    );
 
   if (!response.ok) {
-    throw new Error(
+    throw new RailRadarError(
+      response.status,
       `RailRadar returned ${response.status}`
     );
   }
@@ -73,7 +98,8 @@ async function fetchRailRadar<T>(
     (await response.json()) as RailRadarEnvelope<T>;
 
   if (!body.success) {
-    throw new Error(
+    throw new RailRadarError(
+      502,
       "RailRadar request failed"
     );
   }
@@ -100,18 +126,19 @@ async function loadTrains(): Promise<
       "/v1/legacy/trains/all-kvs"
     );
 
-  const trains = data
-    .filter(
-      ([number, name]) =>
-        Boolean(number) &&
-        Boolean(name)
-    )
-    .map(
-      ([number, name]) => ({
-        number,
-        name,
-      })
-    );
+  const trains =
+    data
+      .filter(
+        ([number, name]) =>
+          Boolean(number) &&
+          Boolean(name)
+      )
+      .map(
+        ([number, name]) => ({
+          number,
+          name,
+        })
+      );
 
   trainsCache = {
     data: trains,
@@ -122,7 +149,67 @@ async function loadTrains(): Promise<
   return trains;
 }
 
-async function loadStations(): Promise<
+function filterStations(
+  stations: StationSuggestion[],
+  q: string
+): StationSuggestion[] {
+  const codeMatches: StationSuggestion[] =
+    [];
+
+  const nameMatches: StationSuggestion[] =
+    [];
+
+  for (const station of stations) {
+    const code =
+      station.code.toLowerCase();
+
+    const name =
+      station.name.toLowerCase();
+
+    if (code.startsWith(q)) {
+      codeMatches.push(station);
+      continue;
+    }
+
+    if (name.includes(q)) {
+      nameMatches.push(station);
+    }
+  }
+
+  return [
+    ...codeMatches,
+    ...nameMatches,
+  ].slice(0, 20);
+}
+
+async function refreshStationsFromRailRadar(): Promise<
+  StationSuggestion[]
+> {
+  const data =
+    await fetchRailRadar<
+      Record<string, string>
+    >(
+      "/v1/lookup/stations"
+    );
+
+  const stations =
+    Object.entries(data).map(
+      ([code, name]) => ({
+        code,
+        name,
+      })
+    );
+
+  stationsCache = {
+    data: stations,
+    expiresAt:
+      Date.now() + STATION_CACHE_TTL_MS,
+  };
+
+  return stations;
+}
+
+async function getStations(): Promise<
   StationSuggestion[]
 > {
   const now = Date.now();
@@ -134,28 +221,38 @@ async function loadStations(): Promise<
     return stationsCache.data;
   }
 
-  const data =
-    await fetchRailRadar<
-      Record<string, string>
-    >(
-      "/v1/lookup/stations"
-    );
+  if (stationsRefreshPromise) {
+    return stationsRefreshPromise;
+  }
 
-  const stations = Object.entries(data)
-    .map(
-      ([code, name]) => ({
-        code,
-        name,
-      })
-    );
+  stationsRefreshPromise =
+    (async (): Promise<
+      StationSuggestion[]
+    > => {
+      try {
+        return await refreshStationsFromRailRadar();
+      } catch (error) {
+        console.warn(
+          "RailRadar station catalogue unavailable; using fallback catalogue",
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : String(error),
+            status:
+              error instanceof RailRadarError
+                ? error.status
+                : undefined,
+          }
+        );
 
-  stationsCache = {
-    data: stations,
-    expiresAt:
-      now + STATION_CACHE_TTL_MS,
-  };
+        return [];
+      } finally {
+        stationsRefreshPromise = null;
+      }
+    })();
 
-  return stations;
+  return stationsRefreshPromise;
 }
 
 export async function searchTrains(
@@ -171,8 +268,11 @@ export async function searchTrains(
   const trains =
     await loadTrains();
 
-  const numberMatches: TrainSuggestion[] = [];
-  const nameMatches: TrainSuggestion[] = [];
+  const numberMatches: TrainSuggestion[] =
+    [];
+
+  const nameMatches: TrainSuggestion[] =
+    [];
 
   for (const train of trains) {
     const number =
@@ -208,30 +308,16 @@ export async function searchStations(
   }
 
   const stations =
-    await loadStations();
+    await getStations();
 
-  const codeMatches: StationSuggestion[] = [];
-  const nameMatches: StationSuggestion[] = [];
-
-  for (const station of stations) {
-    const code =
-      station.code.toLowerCase();
-
-    const name =
-      station.name.toLowerCase();
-
-    if (code.startsWith(q)) {
-      codeMatches.push(station);
-      continue;
-    }
-
-    if (name.includes(q)) {
-      nameMatches.push(station);
-    }
+  if (stations.length > 0) {
+    return filterStations(
+      stations,
+      q
+    );
   }
 
-  return [
-    ...codeMatches,
-    ...nameMatches,
-  ].slice(0, 20);
+  return searchStationsFromFallback(
+    query
+  );
 }
