@@ -1,14 +1,41 @@
 package com.trainalert
 
 import android.content.Context
+
 import androidx.compose.foundation.background
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -22,17 +49,17 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val RW_ZONE = ZoneId.of("Asia/Kolkata")
-private val RW_TIME = DateTimeFormatter.ofPattern("h:mm a", Locale("en", "IN"))
+private val ACTIVE_ZONE = ZoneId.of("Asia/Kolkata")
+private val ACTIVE_TIME = DateTimeFormatter.ofPattern("h:mm a", Locale("en", "IN"))
 
-private fun rwTime(value: String?): String =
+private fun activeTime(value: String?): String =
     value?.takeIf { it.isNotBlank() }?.let {
         runCatching {
-            Instant.parse(it).atZone(RW_ZONE).format(RW_TIME)
+            Instant.parse(it).atZone(ACTIVE_ZONE).format(ACTIVE_TIME)
         }.getOrDefault("—")
     } ?: "—"
 
-private fun rwMinutes(value: String?): Long? =
+private fun activeMinutes(value: String?): Long? =
     value?.takeIf { it.isNotBlank() }?.let {
         runCatching {
             Duration.between(Instant.now(), Instant.parse(it)).toMinutes()
@@ -55,8 +82,8 @@ fun ActiveJourneyScreen(
     var cancelling by remember { mutableStateOf(false) }
     var showCancel by remember { mutableStateOf(false) }
 
-    fun refresh(spinner: Boolean = false) {
-        if (spinner) loading = true
+    fun refresh(showSpinner: Boolean = false) {
+        if (showSpinner) loading = true
         JourneyApi.getJourney(
             context = context,
             journeyId = journeyId,
@@ -74,6 +101,9 @@ fun ActiveJourneyScreen(
 
     LaunchedEffect(journeyId) {
         refresh(true)
+    }
+
+    LaunchedEffect(journeyId) {
         while (true) {
             delay(30_000)
             JourneyApi.getJourney(
@@ -145,7 +175,11 @@ fun ActiveJourneyScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text("Unable to load journey", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "Unable to load journey",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(Modifier.height(8.dp))
                 Text(error ?: "Something went wrong.")
                 Spacer(Modifier.height(16.dp))
@@ -173,11 +207,14 @@ private fun ActiveJourneyContent(
     cancelling: Boolean,
     modifier: Modifier
 ) {
-    val destination = journey.destinationStationName?.takeIf { it.isNotBlank() }
-        ?: journey.destinationStationCode
-    val minutes = rwMinutes(journey.expectedArrival)
+    val destination =
+        journey.destinationStationName?.takeIf { it.isNotBlank() }
+            ?: journey.destinationStationCode
+
+    val minutes = activeMinutes(journey.expectedArrival)
+    val terminal =
+        journey.state == "completed" || journey.state == "cancelled"
     val active = journey.state == "active"
-    val terminal = journey.state == "completed" || journey.state == "cancelled"
     val offsets = journey.alertOffsetsMinutes.sortedDescending()
 
     LazyColumn(
@@ -186,6 +223,7 @@ private fun ActiveJourneyContent(
     ) {
         item {
             Spacer(Modifier.height(6.dp))
+
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -193,27 +231,33 @@ private fun ActiveJourneyContent(
             ) {
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = if (active) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(8.dp).background(
-                                if (active) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outline,
-                                CircleShape
-                            )
-                        )
-                        Spacer(Modifier.size(7.dp))
-                        Text(if (active) "ON TRAIN" else "UPCOMING", fontWeight = FontWeight.Bold)
+                    color = if (active) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
                     }
+                ) {
+                    Text(
+                        if (active) "●  MONITORING LIVE" else "○  UPCOMING",
+                        Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-                Text("Train ${journey.trainNumber}", fontWeight = FontWeight.SemiBold)
+
+                Text(
+                    "Train ${journey.trainNumber}",
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
 
         item {
-            Text(destination, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(
+                destination,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
             Text(
                 journey.destinationStationCode,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -223,13 +267,13 @@ private fun ActiveJourneyContent(
         item {
             Card(
                 Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(30.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
                 Column(
-                    Modifier.padding(22.dp),
+                    Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -238,10 +282,11 @@ private fun ActiveJourneyContent(
                             minutes < 0 -> "Arrived"
                             else -> "$minutes"
                         },
-                        fontSize = 60.sp,
+                        fontSize = 64.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
+
                     Text(
                         when {
                             minutes == null -> "ETA unavailable"
@@ -250,19 +295,26 @@ private fun ActiveJourneyContent(
                         },
                         style = MaterialTheme.typography.titleMedium
                     )
+
                     Spacer(Modifier.height(18.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(14.dp))
+
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
                             Text("Expected arrival", style = MaterialTheme.typography.labelMedium)
-                            Text(rwTime(journey.expectedArrival), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                activeTime(journey.expectedArrival),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
+
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("Status", style = MaterialTheme.typography.labelMedium)
+                            Text("Running", style = MaterialTheme.typography.labelMedium)
                             Text(
                                 when {
                                     journey.delayMinutes == null -> "Monitoring"
@@ -286,59 +338,57 @@ private fun ActiveJourneyContent(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (!terminal)
-                        MaterialTheme.colorScheme.surfaceVariant
-                    else MaterialTheme.colorScheme.errorContainer
+                    containerColor =
+                        if (terminal) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
                 Column(Modifier.padding(18.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (!terminal) "✓" else "!",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (!terminal)
-                                MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error
-                        )
-                        Spacer(Modifier.size(10.dp))
-                        Column {
-                            Text(
-                                if (!terminal) "Trip protection active" else "Protection ended",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                if (!terminal) "RailWake is monitoring this journey."
-                                else "No further live alerts are expected.",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
+                    Text(
+                        if (terminal) "Journey ended" else "✓  Trip protection active",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (terminal)
+                            MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary
+                    )
 
-                    journey.nextAlert?.takeIf { it.isNotBlank() }?.let {
-                        if (!terminal) {
-                            Spacer(Modifier.height(14.dp))
-                            Surface(
-                                Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                    Spacer(Modifier.height(5.dp))
+
+                    Text(
+                        if (terminal) {
+                            "No further live alerts are expected."
+                        } else {
+                            "RailWake is watching the ETA and will adjust your wake-ups if the train is delayed."
+                        },
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    if (!terminal && !journey.nextAlert.isNullOrBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Surface(
+                            Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(15.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                        ) {
+                            Row(
+                                Modifier.padding(13.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(
-                                    Modifier.padding(13.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column {
-                                        Text("Next wake-up", style = MaterialTheme.typography.labelMedium)
-                                        Text(rwTime(it), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    }
+                                Column {
+                                    Text("Next wake-up", style = MaterialTheme.typography.labelMedium)
                                     Text(
-                                        "ETA-aware",
-                                        Modifier.align(Alignment.CenterVertically),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold
+                                        activeTime(journey.nextAlert),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
+                                Text(
+                                    "ETA-aware",
+                                    Modifier.align(Alignment.CenterVertically),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
@@ -349,50 +399,80 @@ private fun ActiveJourneyContent(
         item {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
                 Column(Modifier.padding(18.dp)) {
-                    Text("Your alerts", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "Wake-up plan",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "We'll keep the next useful alert and adjust it when the ETA moves.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(15.dp))
 
                     offsets.forEachIndexed { index, offset ->
-                        val eta = journey.expectedArrival?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                        val eta = journey.expectedArrival?.let {
+                            runCatching { Instant.parse(it) }.getOrNull()
+                        }
                         val alertAt = eta?.minusSeconds(offset * 60L)
-                        val next = journey.nextAlert?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                        val next = journey.nextAlert?.let {
+                            runCatching { Instant.parse(it) }.getOrNull()
+                        }
 
                         val state = when {
                             alertAt == null -> AlertState.UPCOMING
                             alertAt.isBefore(Instant.now()) -> AlertState.COMPLETED
-                            next != null && kotlin.math.abs(Duration.between(next, alertAt).toMinutes()) <= 1 ->
+                            next != null &&
+                                kotlin.math.abs(Duration.between(next, alertAt).toMinutes()) <= 1 ->
                                 AlertState.NEXT
                             else -> AlertState.UPCOMING
                         }
 
-                        val color = when (state) {
+                        val accent = when (state) {
                             AlertState.COMPLETED -> MaterialTheme.colorScheme.primary
                             AlertState.NEXT -> MaterialTheme.colorScheme.secondary
                             AlertState.UPCOMING -> MaterialTheme.colorScheme.outline
                         }
 
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(11.dp).background(color, CircleShape))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(11.dp)
+                                    .background(accent, CircleShape)
+                            )
                             Spacer(Modifier.size(12.dp))
+
                             Column(Modifier.weight(1f)) {
-                                Text("$offset min before your stop", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "$offset min before your stop",
+                                    fontWeight = FontWeight.SemiBold
+                                )
                                 Text(
                                     when (state) {
-                                        AlertState.COMPLETED -> "Alert completed"
-                                        AlertState.NEXT -> "Next alert"
-                                        AlertState.UPCOMING -> "Scheduled"
+                                        AlertState.COMPLETED -> "Completed"
+                                        AlertState.NEXT -> "Next wake-up"
+                                        AlertState.UPCOMING -> "Waiting"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+
                             Text(
                                 when (state) {
                                     AlertState.COMPLETED -> "✓"
                                     AlertState.NEXT -> "●"
                                     AlertState.UPCOMING -> "○"
                                 },
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = accent
                             )
                         }
 
@@ -421,9 +501,11 @@ private fun ActiveJourneyContent(
         item {
             Button(
                 onClick = onRefresh,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
-            ) { Text("Refresh live status") }
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(17.dp)
+            ) {
+                Text("Refresh live status")
+            }
         }
 
         if (!terminal) {
@@ -432,7 +514,7 @@ private fun ActiveJourneyContent(
                     onClick = onCancel,
                     enabled = !cancelling,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(17.dp)
                 ) {
                     Text(if (cancelling) "Cancelling…" else "Cancel journey")
                 }
@@ -441,13 +523,13 @@ private fun ActiveJourneyContent(
 
         item {
             Text(
-                "RailWake automatically adjusts your alerts when the expected arrival changes.",
+                "RailWake is designed to let you sleep without losing track of your stop.",
                 Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(24.dp))
         }
     }
 }

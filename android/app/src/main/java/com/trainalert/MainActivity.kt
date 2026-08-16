@@ -334,6 +334,20 @@ fun TrainAlertApp(
         )
     }
 
+    var showProtectionCenter by remember {
+    mutableStateOf(false)
+}
+
+if (showProtectionCenter) {
+    ProtectionCenterScreen(
+        context = context,
+        onBack = {
+            showProtectionCenter = false
+        }
+    )
+    return
+}
+
     var loading by remember {
         mutableStateOf(true)
     }
@@ -477,6 +491,9 @@ val cancelledJourneys =
         cancelledJourneys = cancelledJourneys,
         onAddJourney = {
             showAddJourney = true
+        },
+        onProtectionCenter = {
+            showProtectionCenter = true
         },
         onJourneyClick = { journey ->
             selectedJourneyId = journey.id

@@ -11,14 +11,17 @@ import android.widget.Toast
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -26,9 +29,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 
 class AlarmActivity : ComponentActivity() {
+
     companion object {
         const val EXTRA_TITLE = "title"
         const val EXTRA_BODY = "body"
@@ -58,26 +63,42 @@ class AlarmActivity : ComponentActivity() {
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         val body = intent.getStringExtra(EXTRA_BODY).orEmpty()
         val journeyId = intent.getStringExtra(EXTRA_JOURNEY_ID)
-        val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
-        val offsetMinutes = intent.getIntExtra(EXTRA_OFFSET_MINUTES, 15)
+        val notificationId =
+            intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
+        val offsetMinutes =
+            intent.getIntExtra(EXTRA_OFFSET_MINUTES, 15)
 
         setContent {
-            var snoozing by remember { mutableStateOf(false) }
+            var snoozing by remember {
+                mutableStateOf(false)
+            }
 
             AlarmScreen(
                 context = this,
                 title = title.ifBlank { "WAKE UP" },
-                body = body.ifBlank { "Your stop is approaching." },
+                body = body.ifBlank {
+                    "Your stop is approaching."
+                },
                 offsetMinutes = offsetMinutes,
                 snoozing = snoozing,
                 onDismiss = {
-                    AlarmSnoozeScheduler.cancel(this, notificationId)
+                    AlarmSnoozeScheduler.cancel(
+                        this,
+                        notificationId
+                    )
+
                     com.trainalert.notification.NotificationHelper
-                        .dismissNotification(this, notificationId)
+                        .dismissNotification(
+                            this,
+                            notificationId
+                        )
+
                     finishAndRemoveTask()
                 },
                 onSnooze = { minutes ->
-                    if (snoozing) return@AlarmScreen
+                    if (snoozing) {
+                        return@AlarmScreen
+                    }
 
                     snoozing = true
 
@@ -85,8 +106,12 @@ class AlarmActivity : ComponentActivity() {
                         context = this,
                         journeyId = journeyId,
                         requestedMinutes = minutes,
-                        title = title.ifBlank { "WAKE UP" },
-                        body = body.ifBlank { "Your stop is approaching." },
+                        title = title.ifBlank {
+                            "WAKE UP"
+                        },
+                        body = body.ifBlank {
+                            "Your stop is approaching."
+                        },
                         notificationId = notificationId,
                         offsetMinutes = offsetMinutes,
                         onScheduled = { scheduled ->
@@ -103,7 +128,11 @@ class AlarmActivity : ComponentActivity() {
                                 }
 
                                 com.trainalert.notification.NotificationHelper
-                                    .dismissNotification(this, notificationId)
+                                    .dismissNotification(
+                                        this,
+                                        notificationId
+                                    )
+
                                 finishAndRemoveTask()
                             }
                         }
@@ -125,22 +154,86 @@ private fun AlarmScreen(
     onSnooze: (Int) -> Unit
 ) {
     val alarmUri = remember {
-        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        RingtoneManager.getDefaultUri(
+            RingtoneManager.TYPE_ALARM
+        )
     }
 
-    var ringtone by remember { mutableStateOf<Ringtone?>(null) }
+    var ringtone by remember {
+        mutableStateOf<Ringtone?>(null)
+    }
+
+    val pulse =
+        androidx.compose.animation.core
+            .rememberInfiniteTransition(
+                label = "alarmPulse"
+            )
+
+    val pulseAlpha by pulse.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec =
+            androidx.compose.animation.core
+                .infiniteRepeatable(
+                    androidx.compose.animation.core.tween(
+                        durationMillis = 900
+                    ),
+                    repeatMode =
+                        androidx.compose.animation.core
+                            .RepeatMode
+                            .Reverse
+                ),
+        label = "alarmPulseAlpha"
+    )
+
+    var elapsedSeconds by remember {
+        mutableLongStateOf(0L)
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            elapsedSeconds++
+        }
+    }
 
     DisposableEffect(alarmUri) {
-        val tone = RingtoneManager.getRingtone(context, alarmUri)
+        val tone =
+            RingtoneManager.getRingtone(
+                context,
+                alarmUri
+            )
+
         ringtone = tone
-        tone?.audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
+
+        tone?.audioAttributes =
+            AudioAttributes.Builder()
+                .setUsage(
+                    AudioAttributes.USAGE_ALARM
+                )
+                .setContentType(
+                    AudioAttributes.CONTENT_TYPE_SONIFICATION
+                )
+                .build()
+
         tone?.play()
 
-        onDispose { ringtone?.stop() }
+        onDispose {
+            ringtone?.stop()
+        }
     }
+
+    val urgencyText =
+        when {
+            offsetMinutes <= 5 ->
+                "Your stop is very close"
+
+            offsetMinutes <= 15 ->
+                "Your stop is approaching"
+
+            else ->
+                "Time to get ready"
+        }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -149,116 +242,286 @@ private fun AlarmScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 28.dp, vertical = 40.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(
+                    horizontal = 26.dp,
+                    vertical = 34.dp
+                ),
+            horizontalAlignment =
+                Alignment.CenterHorizontally,
+            verticalArrangement =
+                Arrangement.Center
         ) {
-            Text("🚆", fontSize = 48.sp)
-            Spacer(Modifier.height(26.dp))
+            Text(
+                "🚆",
+                fontSize = 48.sp
+            )
+
+            Spacer(
+                Modifier.height(18.dp)
+            )
+
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.White.copy(
+                    alpha = 0.14f
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(
+                        horizontal = 13.dp,
+                        vertical = 7.dp
+                    ),
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .alpha(pulseAlpha)
+                            .background(
+                                Color.White,
+                                CircleShape
+                            )
+                    )
+
+                    Spacer(
+                        Modifier.size(7.dp)
+                    )
+
+                    Text(
+                        urgencyText,
+                        color = Color.White,
+                        style =
+                            MaterialTheme
+                                .typography
+                                .labelLarge,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(
+                Modifier.height(22.dp)
+            )
 
             Text(
                 title,
                 color = Color.White,
-                fontSize = 42.sp,
+                fontSize = 44.sp,
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(
+                Modifier.height(8.dp)
+            )
 
             Text(
                 body,
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge
+                color =
+                    Color.White.copy(
+                        alpha = 0.94f
+                    ),
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleLarge
             )
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(
+                Modifier.height(14.dp)
+            )
 
             Text(
                 if (offsetMinutes <= 15) {
-                    "Your stop is approaching."
+                    "$offsetMinutes minutes until your stop"
                 } else {
-                    "It's time to get ready."
+                    "Wake-up reminder"
                 },
-                color = Color.White.copy(alpha = 0.92f),
-                style = MaterialTheme.typography.bodyLarge
+                color =
+                    Color.White.copy(
+                        alpha = 0.82f
+                    ),
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodyLarge
             )
 
-            Spacer(Modifier.height(34.dp))
+            Spacer(
+                Modifier.height(30.dp)
+            )
 
             Box(
                 modifier = Modifier
-                    .size(220.dp)
+                    .size(226.dp)
                     .background(
-                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(
+                            alpha = 0.12f
+                        ),
                         CircleShape
                     )
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onPress = {
                                 try {
-                                    withTimeout(2000) { awaitRelease() }
-                                } catch (_: TimeoutCancellationException) {
+                                    withTimeout(2000) {
+                                        awaitRelease()
+                                    }
+                                } catch (
+                                    _: TimeoutCancellationException
+                                ) {
                                     onDismiss()
                                 }
                             }
                         )
                     },
-                contentAlignment = Alignment.Center
+                contentAlignment =
+                    Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally
+                ) {
                     Text(
                         "I'M",
                         color = Color.White,
                         fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight =
+                            FontWeight.Bold
                     )
+
                     Text(
                         "AWAKE",
                         color = Color.White,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 30.sp,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Spacer(
+                        Modifier.height(5.dp)
+                    )
+
+                    Text(
+                        "hold to dismiss",
+                        color =
+                            Color.White.copy(
+                                alpha = 0.78f
+                            ),
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodySmall
                     )
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
-
-            Text(
-                "Hold for 2 seconds to dismiss",
-                color = Color.White.copy(alpha = 0.82f),
-                style = MaterialTheme.typography.bodyMedium
+            Spacer(
+                Modifier.height(26.dp)
             )
 
-            Spacer(Modifier.height(24.dp))
-
-            Text(
-                "Snooze",
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
+            Surface(
+                modifier =
+                    Modifier.fillMaxWidth(),
+                shape =
+                    RoundedCornerShape(20.dp),
+                color =
+                    Color.White.copy(
+                        alpha = 0.10f
+                    )
             ) {
-                listOf(5, 10, 15).forEach { minutes ->
-                    TextButton(
-                        enabled = !snoozing && minutes < maxOf(offsetMinutes, 6),
-                        onClick = { onSnooze(minutes) }
+                Column(
+                    modifier =
+                        Modifier.padding(
+                            13.dp
+                        ),
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Snooze",
+                        color = Color.White,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Row(
+                        horizontalArrangement =
+                            Arrangement.Center
                     ) {
-                        Text("$minutes min", color = Color.White)
+                        listOf(
+                            5,
+                            10,
+                            15
+                        ).forEach { minutes ->
+                            TextButton(
+                                enabled =
+                                    !snoozing &&
+                                        minutes <
+                                            maxOf(
+                                                offsetMinutes,
+                                                6
+                                            ),
+                                onClick = {
+                                    onSnooze(
+                                        minutes
+                                    )
+                                }
+                            ) {
+                                Text(
+                                    "$minutes min",
+                                    color =
+                                        if (
+                                            !snoozing &&
+                                            minutes <
+                                                maxOf(
+                                                    offsetMinutes,
+                                                    6
+                                                )
+                                        ) {
+                                            Color.White
+                                        } else {
+                                            Color.White.copy(
+                                                alpha = 0.35f
+                                            )
+                                        }
+                                )
+                            }
+                        }
+                    }
+
+                    if (snoozing) {
+                        Text(
+                            "Checking your latest ETA…",
+                            color =
+                                Color.White.copy(
+                                    alpha = 0.82f
+                                ),
+                            style =
+                                MaterialTheme
+                                    .typography
+                                    .bodySmall
+                        )
                     }
                 }
             }
 
-            if (snoozing) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Checking your latest ETA…",
-                    color = Color.White.copy(alpha = 0.85f),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            Spacer(
+                Modifier.height(16.dp)
+            )
+
+            Text(
+                "RailWake is watching your journey.",
+                color =
+                    Color.White.copy(
+                        alpha = 0.72f
+                    ),
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodySmall
+            )
         }
     }
 }
