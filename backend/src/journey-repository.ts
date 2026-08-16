@@ -28,6 +28,10 @@ export interface JourneyRepository {
     limit: number
   ): Promise<Journey[]>;
 
+  reconcileStaleJourneys(
+    graceHours: number
+  ): Promise<number>;
+
   complete(
     id: string
   ): Promise<Journey | null>;
@@ -274,6 +278,82 @@ export class PostgresJourneyRepository
       result.rows[0]!
     );
   }
+
+  async reconcileStaleJourneys(
+  graceHours: number
+): Promise<number> {
+  const safeGraceHours =
+    Number.isFinite(graceHours) &&
+    graceHours > 0
+      ? Math.min(
+          graceHours,
+          24
+        )
+      : 2;
+
+  return this.db.transaction(
+    async (db) => {
+      const result =
+        await db.query<{
+          id: string;
+        }>(
+          `
+          UPDATE journeys
+          SET
+            state = 'completed',
+            updated_at = now()
+
+          WHERE state IN (
+            'scheduled',
+            'active'
+          )
+
+          AND current_eta IS NOT NULL
+
+          AND current_eta <=
+            now() -
+            make_interval(
+              hours => $1
+            )
+
+          RETURNING id
+          `,
+          [
+            safeGraceHours,
+          ]
+        );
+
+      if (
+        result.rows.length === 0
+      ) {
+        return 0;
+      }
+
+      const journeyIds =
+        result.rows.map(
+          (row) => row.id
+        );
+
+      await db.query(
+        `
+        UPDATE alerts
+        SET
+          state = 'cancelled'
+
+        WHERE journey_id =
+          ANY($1::uuid[])
+
+        AND state = 'pending'
+        `,
+        [
+          journeyIds,
+        ]
+      );
+
+      return result.rows.length;
+    }
+  );
+}
 
   async createWithAlerts(
     journey: Journey
