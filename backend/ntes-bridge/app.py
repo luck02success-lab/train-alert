@@ -3,7 +3,11 @@ import secrets
 
 from fastapi import FastAPI, Header, HTTPException, Query
 
-from ntes_bridge import live_status, station_live
+from ntes_bridge import (
+    live_status,
+    station_live,
+    search_trains,
+)
 
 
 app = FastAPI(
@@ -129,4 +133,30 @@ def get_station_live(
         raise HTTPException(
             status_code=503,
             detail="NTES provider unavailable",
+        )
+
+@app.get("/search-trains")
+def search_train_lookup(
+    q: str = Query(
+        min_length=1,
+        max_length=50,
+    ),
+    authorization: str | None = Header(
+        default=None,
+    ),
+):
+    require_auth(authorization)
+
+    try:
+        return search_trains(q)
+    except Exception as exc:
+        print(
+            "NTES train search error:",
+            repr(exc),
+            flush=True,
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail="NTES train search unavailable",
         )

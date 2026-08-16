@@ -265,36 +265,141 @@ export async function searchTrains(
     return [];
   }
 
-  const trains =
-    await loadTrains();
+  try {
+    const trains =
+      await loadTrains();
 
-  const numberMatches: TrainSuggestion[] =
-    [];
+    const numberMatches: TrainSuggestion[] =
+      [];
 
-  const nameMatches: TrainSuggestion[] =
-    [];
+    const nameMatches: TrainSuggestion[] =
+      [];
 
-  for (const train of trains) {
-    const number =
-      train.number.toLowerCase();
+    for (const train of trains) {
+      const number =
+        train.number.toLowerCase();
 
-    const name =
-      train.name.toLowerCase();
+      const name =
+        train.name.toLowerCase();
 
-    if (number.startsWith(q)) {
-      numberMatches.push(train);
-      continue;
+      if (number.startsWith(q)) {
+        numberMatches.push(train);
+        continue;
+      }
+
+      if (name.includes(q)) {
+        nameMatches.push(train);
+      }
     }
 
-    if (name.includes(q)) {
-      nameMatches.push(train);
+    return [
+      ...numberMatches,
+      ...nameMatches,
+    ].slice(0, 20);
+  } catch (error) {
+    console.warn(
+      "RailRadar train lookup unavailable; using NTES fallback",
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+        status:
+          error instanceof RailRadarError
+            ? error.status
+            : undefined,
+      }
+    );
+
+    try {
+      return await searchTrainsFromNtes(
+        query
+      );
+    } catch (ntesError) {
+      console.error(
+        "NTES train lookup failed",
+        ntesError
+      );
+
+      return [];
     }
   }
+}
 
-  return [
-    ...numberMatches,
-    ...nameMatches,
-  ].slice(0, 20);
+async function searchTrainsFromNtes(
+  query: string
+): Promise<TrainSuggestion[]> {
+  const baseUrl =
+    process.env.NTES_PROVIDER_BASE_URL?.trim();
+
+  const apiKey =
+    process.env.NTES_PROVIDER_API_KEY?.trim();
+
+  if (!baseUrl || !apiKey) {
+    return [];
+  }
+
+  const base = baseUrl.endsWith("/")
+    ? baseUrl
+    : `${baseUrl}/`;
+
+  const url = new URL(
+    "search-trains",
+    base
+  );
+
+  url.searchParams.set(
+    "q",
+    query
+  );
+
+  const response =
+    await fetch(
+      url,
+      {
+        headers: {
+          Accept:
+            "application/json",
+          Authorization:
+            `Bearer ${apiKey}`,
+        },
+        signal:
+          AbortSignal.timeout(
+            8_000
+          ),
+      }
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `NTES train lookup returned ${response.status}`
+    );
+  }
+
+  const data =
+    (await response.json()) as unknown;
+
+  if (!Array.isArray(data)) {
+    throw new Error(
+      "NTES train lookup returned invalid data"
+    );
+  }
+
+  return data
+    .filter(
+      (
+        value
+      ): value is TrainSuggestion =>
+        Boolean(value) &&
+        typeof value === "object" &&
+        typeof (
+          value as TrainSuggestion
+        ).number === "string" &&
+        typeof (
+          value as TrainSuggestion
+        ).name === "string"
+    )
+    .slice(0, 20);
 }
 
 export async function searchStations(

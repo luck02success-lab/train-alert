@@ -453,6 +453,45 @@ def live_status(
         "exceptions": [],
     }
 
+def search_trains(query: str):
+    query = query.strip()
+
+    if not query:
+        return []
+
+    data = _client().search(query)
+
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            "Malformed NTES train search response"
+        )
+
+    trains = []
+
+    for raw in data.get("Trains") or []:
+        if not isinstance(raw, dict):
+            continue
+
+        train_number = _string(
+            raw.get("TrainNumber")
+        )
+
+        train_name = _string(
+            raw.get("TrainName")
+        )
+
+        if not train_number:
+            continue
+
+        trains.append(
+            {
+                "number": train_number,
+                "name": train_name
+                or train_number,
+            }
+        )
+
+    return trains[:20]
 
 def station_live(
     station_code: str,
