@@ -3,11 +3,15 @@ import {
   type TrainLiveStatus,
   type StationLiveBoard,
 } from "./providers/railradar.js";
-import type { RailProvider } from "./rail-provider.js";
+
+import type {
+  RailProvider,
+} from "./rail-provider.js";
 
 type ProviderState = {
   consecutiveFailures: number;
   cooldownUntil: number;
+
   lastFailureAt: number | null;
   lastSuccessAt: number | null;
   lastLatencyMs: number | null;
@@ -26,11 +30,18 @@ export type ProviderCallResult<T> = {
   attempts: ProviderAttempt[];
 };
 
-const DEFAULT_COOLDOWN_MS = 2 * 60_000;
-const RATE_LIMIT_COOLDOWN_MS = 30 * 60_000;
-const MAX_FAILURE_COOLDOWN_MS = 15 * 60_000;
+const DEFAULT_COOLDOWN_MS =
+  2 * 60_000;
 
-function isRetryable(error: unknown): boolean {
+const RATE_LIMIT_COOLDOWN_MS =
+  30 * 60_000;
+
+const MAX_FAILURE_COOLDOWN_MS =
+  15 * 60_000;
+
+function isRetryable(
+  error: unknown
+): boolean {
   return (
     error instanceof ProviderError &&
     (
@@ -42,7 +53,9 @@ function isRetryable(error: unknown): boolean {
   );
 }
 
-function isNotFound(error: unknown): boolean {
+function isNotFound(
+  error: unknown
+): boolean {
   return (
     error instanceof ProviderError &&
     (
@@ -53,76 +66,110 @@ function isNotFound(error: unknown): boolean {
 }
 
 export class RailProviderGateway {
-  private readonly state = new Map<string, ProviderState>();
+  private readonly state =
+    new Map<string, ProviderState>();
 
   constructor(
     private readonly providers: readonly RailProvider[]
   ) {
     if (providers.length === 0) {
-      throw new Error("At least one rail provider is required.");
+      throw new Error(
+        "At least one rail provider is required."
+      );
     }
 
     for (const provider of providers) {
-      this.state.set(provider.name, {
-        consecutiveFailures: 0,
-        cooldownUntil: 0,
-        lastFailureAt: null,
-        lastSuccessAt: null,
-        lastLatencyMs: null,
-      });
+      this.state.set(
+        provider.name,
+        {
+          consecutiveFailures: 0,
+          cooldownUntil: 0,
+          lastFailureAt: null,
+          lastSuccessAt: null,
+          lastLatencyMs: null,
+        }
+      );
     }
   }
 
-  getProviderStates(): ReadonlyMap<string, ProviderState> {
+  getProviderStates():
+    ReadonlyMap<
+      string,
+      ProviderState
+    > {
     return this.state;
   }
 
-  private isAvailable(provider: RailProvider): boolean {
-    const current = this.state.get(provider.name);
-    return !current || current.cooldownUntil <= Date.now();
+  private isAvailable(
+    provider: RailProvider
+  ): boolean {
+    const current =
+      this.state.get(provider.name);
+
+    return (
+      !current ||
+      current.cooldownUntil <=
+        Date.now()
+    );
   }
 
   private recordSuccess(
     provider: RailProvider,
     latencyMs: number
   ): void {
-    const current = this.state.get(provider.name)!;
+    const current =
+      this.state.get(
+        provider.name
+      )!;
 
     current.consecutiveFailures = 0;
     current.cooldownUntil = 0;
-    current.lastSuccessAt = Date.now();
-    current.lastLatencyMs = latencyMs;
+    current.lastSuccessAt =
+      Date.now();
+    current.lastLatencyMs =
+      latencyMs;
   }
 
   private recordFailure(
     provider: RailProvider,
     error: unknown
   ): void {
-    const current = this.state.get(provider.name)!;
+    const current =
+      this.state.get(
+        provider.name
+      )!;
+
     const now = Date.now();
 
-    current.consecutiveFailures += 1;
+    current.consecutiveFailures +=
+      1;
+
     current.lastFailureAt = now;
 
     const isRateLimited =
       error instanceof ProviderError &&
-      error.code === "RATE_LIMITED";
+      error.code ===
+        "RATE_LIMITED";
 
     if (isRateLimited) {
       current.cooldownUntil =
-        now + RATE_LIMIT_COOLDOWN_MS;
+        now +
+        RATE_LIMIT_COOLDOWN_MS;
+
       return;
     }
 
-    const multiplier = Math.min(
-      current.consecutiveFailures,
-      5
-    );
+    const multiplier =
+      Math.min(
+        current.consecutiveFailures,
+        5
+      );
 
     current.cooldownUntil =
       now +
       Math.min(
-        DEFAULT_COOLDOWN_MS * multiplier,
+        DEFAULT_COOLDOWN_MS *
+          multiplier,
         MAX_FAILURE_COOLDOWN_MS
       );
   }
@@ -130,7 +177,9 @@ export class RailProviderGateway {
   async getLiveTrain(
     trainNumber: string,
     journeyDate: string
-  ): Promise<ProviderCallResult<TrainLiveStatus>> {
+  ): Promise<
+    ProviderCallResult<TrainLiveStatus>
+  > {
     return this.call(
       (provider) =>
         provider.getLiveTrain(
@@ -143,7 +192,9 @@ export class RailProviderGateway {
   async getStationLiveBoard(
     stationCode: string,
     hoursAhead = 4
-  ): Promise<ProviderCallResult<StationLiveBoard>> {
+  ): Promise<
+    ProviderCallResult<StationLiveBoard>
+  > {
     return this.call(
       (provider) =>
         provider.getStationLiveBoard(
@@ -157,24 +208,48 @@ export class RailProviderGateway {
     live: TrainLiveStatus,
     destinationStationCode: string,
     preferredProviderName?: string
-  ): Promise<ProviderCallResult<TrainLiveStatus>> {
-    const ordered = this.providers.filter(
-      (provider) =>
-        provider.enrichDestinationWhenSuspicious &&
-        this.isAvailable(provider)
-    );
+  ): Promise<
+    ProviderCallResult<TrainLiveStatus>
+  > {
+    const ordered =
+      this.providers.filter(
+        (provider) =>
+          provider.enrichDestinationWhenSuspicious &&
+          this.isAvailable(provider)
+      );
 
     ordered.sort((a, b) => {
-      if (a.name === preferredProviderName) return -1;
-      if (b.name === preferredProviderName) return 1;
+      if (
+        a.name ===
+        preferredProviderName
+      ) {
+        return -1;
+      }
+
+      if (
+        b.name ===
+        preferredProviderName
+      ) {
+        return 1;
+      }
+
       return 0;
     });
 
-    let lastError: unknown = null;
-    const attempts: ProviderAttempt[] = [];
+    let lastError: unknown =
+      null;
 
-    for (const [index, provider] of ordered.entries()) {
-      const started = Date.now();
+    const attempts: ProviderAttempt[] =
+      [];
+
+    for (
+      const [
+        index,
+        provider,
+      ] of ordered.entries()
+    ) {
+      const started =
+        Date.now();
 
       try {
         const data =
@@ -183,32 +258,90 @@ export class RailProviderGateway {
             destinationStationCode
           );
 
-        const latencyMs = Date.now() - started;
-        this.recordSuccess(provider, latencyMs);
+        const latencyMs =
+          Date.now() -
+          started;
+
+        this.recordSuccess(
+          provider,
+          latencyMs
+        );
 
         attempts.push({
-          provider: provider.name,
+          provider:
+            provider.name,
           latencyMs,
-          fallback: index > 0,
+          fallback:
+            index > 0,
         });
+
+        if (index > 0) {
+          console.warn(
+            "Rail provider fallback used",
+            {
+              operation:
+                "enrichDestinationWhenSuspicious",
+              provider:
+                provider.name,
+              attempts,
+            }
+          );
+        }
 
         return {
           data,
-          provider: provider.name,
-          fallbackUsed: index > 0,
+          provider:
+            provider.name,
+          fallbackUsed:
+            index > 0,
           attempts,
         };
       } catch (error) {
         lastError = error;
-        const latencyMs = Date.now() - started;
+
+        const latencyMs =
+          Date.now() -
+          started;
+
         attempts.push({
-          provider: provider.name,
+          provider:
+            provider.name,
           latencyMs,
-          fallback: index > 0,
+          fallback:
+            index > 0,
         });
 
+        /*
+         * A provider-specific "not found" does not
+         * mean that the provider is unhealthy.
+         * Try the next provider without cooling
+         * down the current one.
+         */
+        if (isNotFound(error)) {
+          continue;
+        }
+
         if (isRetryable(error)) {
-          this.recordFailure(provider, error);
+          this.recordFailure(
+            provider,
+            error
+          );
+
+          console.warn(
+            "Rail provider failed",
+            {
+              operation:
+                "enrichDestinationWhenSuspicious",
+              provider:
+                provider.name,
+              errorCode:
+                error instanceof ProviderError
+                  ? error.code
+                  : "UNKNOWN",
+              latencyMs,
+            }
+          );
+
           continue;
         }
 
@@ -224,7 +357,8 @@ export class RailProviderGateway {
       data: live,
       provider:
         preferredProviderName ??
-        this.providers[0]?.name ?? "unknown",
+        this.providers[0]?.name ??
+        "unknown",
       fallbackUsed: false,
       attempts,
     };
@@ -234,50 +368,140 @@ export class RailProviderGateway {
     operation: (
       provider: RailProvider
     ) => Promise<T>
-  ): Promise<ProviderCallResult<T>> {
-    let lastError: unknown = null;
-    const attempts: ProviderAttempt[] = [];
+  ): Promise<
+    ProviderCallResult<T>
+  > {
+    let lastError: unknown =
+      null;
 
-    for (const provider of this.providers) {
-      if (!this.isAvailable(provider)) {
+    const attempts: ProviderAttempt[] =
+      [];
+
+    for (
+      const provider of
+        this.providers
+    ) {
+      if (
+        !this.isAvailable(
+          provider
+        )
+      ) {
+        console.info(
+          "Rail provider skipped due to cooldown",
+          {
+            provider:
+              provider.name,
+          }
+        );
+
         continue;
       }
 
-      const started = Date.now();
+      const started =
+        Date.now();
 
       try {
-        const data = await operation(provider);
-        const latencyMs = Date.now() - started;
+        const data =
+          await operation(
+            provider
+          );
 
-        this.recordSuccess(provider, latencyMs);
+        const latencyMs =
+          Date.now() -
+          started;
+
+        this.recordSuccess(
+          provider,
+          latencyMs
+        );
+
+        const fallbackUsed =
+          attempts.length > 0;
 
         attempts.push({
-          provider: provider.name,
+          provider:
+            provider.name,
           latencyMs,
-          fallback: attempts.length > 0,
+          fallback:
+            fallbackUsed,
         });
+
+        if (fallbackUsed) {
+          console.warn(
+            "Rail provider fallback used",
+            {
+              selectedProvider:
+                provider.name,
+              attempts,
+            }
+          );
+        }
 
         return {
           data,
-          provider: provider.name,
-          fallbackUsed: attempts.length > 0,
+          provider:
+            provider.name,
+          fallbackUsed,
           attempts,
         };
       } catch (error) {
         lastError = error;
-        const latencyMs = Date.now() - started;
+
+        const latencyMs =
+          Date.now() -
+          started;
+
+        const fallback =
+          attempts.length > 0;
 
         attempts.push({
-          provider: provider.name,
+          provider:
+            provider.name,
           latencyMs,
-          fallback: attempts.length > 0,
+          fallback,
         });
 
-        if (
-          isRetryable(error) ||
-          isNotFound(error)
-        ) {
-          this.recordFailure(provider, error);
+        /*
+         * Resource-specific miss:
+         * provider may still be perfectly healthy.
+         * Do not open the provider circuit.
+         */
+        if (isNotFound(error)) {
+          console.info(
+            "Rail provider resource not found",
+            {
+              provider:
+                provider.name,
+              errorCode:
+                error instanceof ProviderError
+                  ? error.code
+                  : "UNKNOWN",
+              latencyMs,
+            }
+          );
+
+          continue;
+        }
+
+        if (isRetryable(error)) {
+          this.recordFailure(
+            provider,
+            error
+          );
+
+          console.warn(
+            "Rail provider failed",
+            {
+              provider:
+                provider.name,
+              errorCode:
+                error instanceof ProviderError
+                  ? error.code
+                  : "UNKNOWN",
+              latencyMs,
+            }
+          );
+
           continue;
         }
 
