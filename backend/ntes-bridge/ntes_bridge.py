@@ -459,7 +459,44 @@ def search_trains(query: str):
     if not query:
         return []
 
-    data = _client().search(query)
+    client = _client()
+
+    # Exact 5-digit train number.
+    if query.isdigit() and len(query) == 5:
+        try:
+            info = client.train_info(query)
+
+            if isinstance(info, dict):
+                train_number = (
+                    _string(info.get("TrainNo"))
+                    or query
+                )
+
+                train_name = _string(
+                    info.get("TrainName")
+                )
+
+                if train_number:
+                    return [
+                        {
+                            "number": train_number,
+                            "name": (
+                                train_name
+                                or train_number
+                            ),
+                        }
+                    ]
+        except Exception as exc:
+            print(
+                "NTES exact train lookup failed:",
+                repr(exc),
+                flush=True,
+            )
+
+        return []
+
+    # Name / keyword / partial lookup.
+    data = client.search(query)
 
     if not isinstance(data, dict):
         raise RuntimeError(
@@ -476,18 +513,20 @@ def search_trains(query: str):
             raw.get("TrainNumber")
         )
 
+        if not train_number:
+            continue
+
         train_name = _string(
             raw.get("TrainName")
         )
 
-        if not train_number:
-            continue
-
         trains.append(
             {
                 "number": train_number,
-                "name": train_name
-                or train_number,
+                "name": (
+                    train_name
+                    or train_number
+                ),
             }
         )
 
