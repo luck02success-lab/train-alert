@@ -1,0 +1,3 @@
+fastapi
+uvicorn[standard]
+ntes-client==0.1.3
